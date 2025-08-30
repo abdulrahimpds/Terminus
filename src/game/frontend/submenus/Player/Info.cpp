@@ -250,14 +250,11 @@ namespace YimMenu::Submenus
 			}
 		}));
 
-		teleportGroup->AddItem(std::make_shared<PlayerCommandItem>("tptoplayer"_J));
+		// Core teleport actions moved to player list icons for better UX
 		teleportGroup->AddItem(std::make_shared<PlayerCommandItem>("tptoplayercamp"_J));
 		teleportGroup->AddItem(std::make_shared<PlayerCommandItem>("tpbehindplayer"_J));
 		teleportGroup->AddItem(std::make_shared<PlayerCommandItem>("tpintovehicle"_J));
-		teleportGroup->AddItem(std::make_shared<PlayerCommandItem>("bring"_J));
-		teleportGroup->AddItem(std::make_shared<PlayerCommandItem>("tpplayertowaypoint"_J));
 		teleportGroup->AddItem(std::make_shared<PlayerCommandItem>("tpplayertomadamnazar"_J));
-		teleportGroup->AddItem(std::make_shared<PlayerCommandItem>("tpplayertojail"_J));
 
 		menu->AddItem(playerOptionsGroup);
 		menu->AddItem(teleportGroup);
