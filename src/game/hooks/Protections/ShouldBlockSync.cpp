@@ -13,11 +13,15 @@
 #include "game/rdr/Network.hpp"
 #include "game/rdr/Nodes.hpp"
 #include "game/rdr/data/PedModels.hpp"
+#include "game/backend/CrashSignatures.hpp"
+#include <format>
+#include <algorithm>
 
 #include <network/CNetGamePlayer.hpp>
 #include <network/CNetworkScSession.hpp>
 #include <network/netObject.hpp>
 #include <network/rlGamerInfo.hpp>
+#include "game/backend/CrashSignatures.hpp"
 #include <network/sync/CProjectBaseSyncDataNode.hpp>
 #include <network/sync/animal/CAnimalCreationData.hpp>
 #include <network/sync/animscene/CAnimSceneCreationData.hpp>
@@ -146,7 +150,8 @@ namespace
 
 	inline bool IsValidPlayerModel(rage::joaat_t model)
 	{
-		return g_ValidPlayerModels.contains(model);
+		// allow any valid ped model to fix custom model sync issues
+		return STREAMING::IS_MODEL_A_PED(model);
 	}
 
 	inline void CheckPlayerModel(YimMenu::Player player, uint32_t model)
@@ -179,8 +184,12 @@ namespace
 		if (source)
 		{
 			LOGF(WARNING, "Blocked {} from {}", crash, source.GetName());
-			auto name = source.GetName();
-			Notifications::Show("Protections", std::format("Blocked {} from {}", crash, name), NotificationType::Warning);
+			// start a short quarantine to block all further traffic from this player
+			source.GetData().QuarantineFor(std::chrono::seconds(10));
+		}
+		else
+		{
+			LOGF(WARNING, "Blocked {}", crash);
 		}
 	}
 
@@ -189,7 +198,17 @@ namespace
 		if (object == -1)
 			return;
 
-		Network::ForceRemoveNetworkEntity(object, -1, false);
+		// CRASH FIX: Don't check crash signatures for object IDs - they're just numbers
+		// The crash signature check was causing issues when trying to delete corrupted objects
+		// Object IDs are 16-bit integers, not pointers, so crash signature detection doesn't apply
+		try
+		{
+			Network::ForceRemoveNetworkEntity(object, -1, false);
+		}
+		catch (...)
+		{
+			LOG(WARNING) << "DeleteSyncObject: Exception deleting object " << object << " - continuing safely";
+		}
 	}
 
 	inline void DeleteSyncObjectLater(std::uint16_t object)
@@ -198,7 +217,16 @@ namespace
 			if (object == -1)
 				return;
 
-			Network::ForceRemoveNetworkEntity(object, -1, true);
+			// CRASH FIX: Don't check crash signatures for object IDs - they're just numbers
+			// Object IDs are 16-bit integers, not pointers, so crash signature detection doesn't apply
+			try
+			{
+				Network::ForceRemoveNetworkEntity(object, -1, true);
+			}
+			catch (...)
+			{
+				LOG(WARNING) << "DeleteSyncObjectLater: Exception deleting object " << object << " - continuing safely";
+			}
 		});
 	}
 
@@ -531,7 +559,9 @@ namespace
 			{
 				if (*(int*)(data + 36ULL * i + 72ULL) < *(int*)(data + 36ULL * i + 64ULL))
 				{
-					LOGF(SYNC, WARNING, "Blocking wanted data array out of bounds range ({} < {}) from ", *(int*)(data + 36ULL * i + 72ULL), *(int*)(data + 36ULL * i + 64ULL), Protections::GetSyncingPlayer().GetName());
+					LOGF(SYNC, WARNING, "Blocking wanted data array out of bounds range ({} < {}) from {}", *(int*)(data + 36ULL * i + 72ULL), *(int*)(data + 36ULL * i + 64ULL), Protections::GetSyncingPlayer().GetName());
+					// trigger quarantine immediately to suppress any follow-up traffic from the attacker
+					SyncBlocked("wanted data array out of bounds crash");
 					Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER);
 					return true;
 				}
@@ -595,13 +625,28 @@ namespace YimMenu::Hooks::Protections
 {
 	bool ShouldBlockSync(rage::netSyncTree* tree, NetObjType type, rage::netObject* object)
 	{
-		Nodes::Init();
-
-		if (g_Running && SyncNodeVisitor(reinterpret_cast<CProjectBaseSyncDataNode*>(tree->m_NextSyncNode), type, object))
+		try
 		{
-			return true;
-		}
+			Nodes::Init();
 
-		return false;
+			if (g_Running && SyncNodeVisitor(reinterpret_cast<CProjectBaseSyncDataNode*>(tree->m_NextSyncNode), type, object))
+			{
+				return true;
+			}
+
+			return false;
+		}
+		catch (const std::exception& e)
+		{
+			LOGF(SYNC, WARNING, "Exception in ShouldBlockSync: {} from {}", e.what(), ::YimMenu::Protections::GetSyncingPlayer().GetName());
+			::YimMenu::Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER);
+			return true; // Block on exception to prevent crash
+		}
+		catch (...)
+		{
+			LOGF(SYNC, WARNING, "Unknown exception in ShouldBlockSync from {}", ::YimMenu::Protections::GetSyncingPlayer().GetName());
+			::YimMenu::Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER);
+			return true; // Block on exception to prevent crash
+		}
 	}
 }

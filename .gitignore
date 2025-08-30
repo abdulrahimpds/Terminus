@@ -2,4 +2,5 @@ build/
 .vs
 *.zip
 resources/
-/.clinerules
+.clinerules/
+.augment/
