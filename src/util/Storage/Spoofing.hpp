@@ -14,9 +14,9 @@ namespace YimMenu
 		bool spoofName;
 		std::string spoofedName = "Terminus";
 		bool spoofIP;
-		std::array<int, 4> spoofedIP = {127, 0, 0, 1};
+		std::array<int, 4> spoofedIP = {1, 3, 3, 7};
 		bool spoofRID;
-		int64_t spoofedRID = 696969;
+		int64_t spoofedRID = 1337;
 
 		struct RemotePlayerTeleport
 		{
