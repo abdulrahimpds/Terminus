@@ -15,6 +15,17 @@ Use a popular injector (Xenos/Extreme Injector/Etc.) and inject into rdr2.exe
 
 ## Screenshots / UI Design
 
-![image](https://github.com/YimMenu/HorseMenu/assets/24372625/e1395e75-7feb-4c4a-9286-bd774e2aaeca)
+![image](https://github.com/user-attachments/assets/0b69a960-9e0e-4bf7-8b52-6cc10e012d8f)
+![image](https://github.com/user-attachments/assets/9ab5cf27-06d6-4e38-9203-0c6ccd79139e)
+![image](https://github.com/user-attachments/assets/b9a1a45a-a400-4daf-99dd-55fe980f31d2)
 
+## Fork and attribution
 
+This project is a fork of YimMenu/HorseMenu: https://github.com/YimMenu/HorseMenu
+
+## Enhancements in this fork
+
+- updated spawner by including all the peds and organizing them into sections
+- improved protections and overall stability (excludes any commented-out experimental paths)
+- fixed bugs, including the previously missing horse godmode
+- improved companion logic and spawner settings, including an "Armed" checkbox
