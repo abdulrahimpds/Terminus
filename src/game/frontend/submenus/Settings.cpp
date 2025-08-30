@@ -9,7 +9,7 @@
 
 namespace YimMenu::Submenus
 {
-	// TODO: refactor this
+	// only show actually assigned hotkeys
 	static void Hotkeys()
 	{
 		ImGui::BulletText("Hold the command name clicked to change its hotkey");
@@ -19,15 +19,13 @@ namespace YimMenu::Submenus
 		ImGui::Separator();
 		ImGui::Spacing();
 
-		for (auto& [Hash, Command] : Commands::GetCommands())
+		for (auto& [hash, link] : g_HotkeySystem.m_CommandHotkeys)
 		{
-			ImGui::PushID(Hash);
-
-			if (g_HotkeySystem.m_CommandHotkeys.find(Hash) != g_HotkeySystem.m_CommandHotkeys.end())
-				HotkeySetter(Hash).Draw();
-
+			if (link.m_Chain.empty())
+				continue;
+			ImGui::PushID((int)hash);
+			HotkeySetter(hash).Draw();
 			ImGui::Spacing();
-
 			ImGui::PopID();
 		}
 	};

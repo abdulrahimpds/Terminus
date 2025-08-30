@@ -21,8 +21,10 @@ namespace YimMenu
 
 		if (ImGui::Button(m_LabelOverride.has_value() ? m_LabelOverride.value().data() : m_Command->GetLabel().data()))
 		{
-			FiberPool::Push([this] {
-				m_Command->Call();
+			auto cmd = m_Command; // capture by value to avoid dangling 'this'
+			FiberPool::Push([cmd] {
+				if (cmd)
+					cmd->Call();
 			});
 		}
 

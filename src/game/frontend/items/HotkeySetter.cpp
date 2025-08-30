@@ -18,28 +18,22 @@ namespace YimMenu
 			ImGui::Text("Unkown Command");
 		else
 		{
-			CommandLink* CommandHotkeyLink = &g_HotkeySystem.m_CommandHotkeys.at(Command->GetHash());
+			auto& link = g_HotkeySystem.m_CommandHotkeys[Command->GetHash()];
 
-			if (!CommandHotkeyLink)
+			ImGui::Button(Command->GetLabel().data());
+			link.m_BeingModified = ImGui::IsItemActive();
+
+			if (link.m_BeingModified)
 			{
-				ImGui::Text("Unkown CommandLink");
+				g_HotkeySystem.CreateHotkey(link.m_Chain);
 			}
-			else
-			{
-				ImGui::Button(Command->GetLabel().data());
-				CommandHotkeyLink->m_BeingModified = ImGui::IsItemActive();
-
-				if (CommandHotkeyLink->m_BeingModified)
-				{
-					g_HotkeySystem.CreateHotkey(CommandHotkeyLink->m_Chain);
-				}
 
 				ImGui::SameLine(200);
 				ImGui::BeginGroup();
 
-				if (CommandHotkeyLink->m_Chain.empty())
+				if (link.m_Chain.empty())
 				{
-					if (CommandHotkeyLink->m_BeingModified)
+					if (link.m_BeingModified)
 						ImGui::Text("Press any button...");
 					else
 						ImGui::Text("No Hotkey Assigned");
@@ -47,29 +41,37 @@ namespace YimMenu
 				else
 				{
 					ImGui::PushItemWidth(35);
-					for (auto HotkeyModifier : CommandHotkeyLink->m_Chain)
+					for (auto HotkeyModifier : link.m_Chain)
 					{
 						char KeyLabel[32];
 						strcpy(KeyLabel, g_HotkeySystem.GetHotkeyLabel(HotkeyModifier).data());
 						ImGui::InputText("##keylabel", KeyLabel, 32, ImGuiInputTextFlags_ReadOnly);
 						if (ImGui::IsItemClicked())
-							std::erase_if(CommandHotkeyLink->m_Chain, [HotkeyModifier](int i) {
-								return i == HotkeyModifier;
-							});
+						{
+							std::erase_if(link.m_Chain, [HotkeyModifier](int i) { return i == HotkeyModifier; });
+							g_HotkeySystem.MarkHotkeysDirty();
+						}
 
 						ImGui::SameLine();
 					}
 					ImGui::PopItemWidth();
 
 					ImGui::SameLine();
+					if (ImGui::Button("Reassign"))
+					{
+						link.m_Chain.clear();
+						link.m_BeingModified = true; // capture next key(s)
+						g_HotkeySystem.MarkHotkeysDirty();
+					}
+					ImGui::SameLine();
 					if (ImGui::Button("Clear"))
 					{
-						CommandHotkeyLink->m_Chain.clear();
+						link.m_Chain.clear();
+						g_HotkeySystem.MarkHotkeysDirty();
 					}
 				}
 
 				ImGui::EndGroup();
 			}
-		}
 	}
 }

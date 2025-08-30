@@ -9,22 +9,18 @@
 
 namespace YimMenu
 {
-	HotkeySystem::HotkeySystem() : 
+	HotkeySystem::HotkeySystem() :
 		IStateSerializer("hotkeys")
 	{
 	}
 
 	void HotkeySystem::RegisterCommands()
 	{
-		auto& cmds = Commands::GetCommands();
-		
-		for (auto& [hash, cmd] : cmds)
-		{
-			CommandLink link;
-			m_CommandHotkeys.insert(std::make_pair(hash, link));
-		}
-		
-		LOG(INFO) << "Registered " << m_CommandHotkeys.size() << " commands";
+		// do not pre-register all commands here; entries are created on-demand (via UI)
+		// or restored from disk in LoadStateImpl(). this avoids prelisting every command
+
+		// in settings > hotkeys and keeps the map sparse.
+		LOG(INFO) << "HotkeySystem initialized";
 	}
 
 	bool HotkeySystem::ListenAndApply(int& Hotkey, std::vector<int> Blacklist)
@@ -94,9 +90,9 @@ namespace YimMenu
 		{
 			if (link.m_Chain.empty() || link.m_BeingModified)
 				continue;
-	
+
 			bool all_keys_pressed = true;
-	
+
 			for (auto modifier : link.m_Chain)
 			{
 				if (!(GetAsyncKeyState(modifier) & 0x8000))
@@ -104,7 +100,7 @@ namespace YimMenu
 					all_keys_pressed = false;
 				}
 			}
-	
+
 			if (all_keys_pressed && std::chrono::system_clock::now() - m_LastHotkeyTriggerTime > 100ms)
 			{
 				auto command = Commands::GetCommand(hash);
@@ -127,6 +123,8 @@ namespace YimMenu
 
 	void HotkeySystem::SaveStateImpl(nlohmann::json& state)
 	{
+		// reset component state to reflect current assignments exactly
+		state = nlohmann::json::object();
 		for (auto& hotkey : m_CommandHotkeys)
 		{
 			if (!hotkey.second.m_Chain.empty())
@@ -140,8 +138,21 @@ namespace YimMenu
 	{
 		for (auto& [key, value] : state.items())
 		{
-			if (m_CommandHotkeys.contains(std::atoi(key.data())))
-				m_CommandHotkeys[std::atoi(key.data())].m_Chain = value.get<std::vector<int>>(); 
+			// parse as unsigned to avoid overflow/truncation issues
+			try
+			{
+				uint32_t hash = static_cast<uint32_t>(std::stoul(key));
+				m_CommandHotkeys[hash].m_Chain = value.get<std::vector<int>>();
+			}
+			catch (const std::exception&)
+			{
+				// skip invalid keys gracefully
+			}
 		}
+	}
+
+	void HotkeySystem::MarkHotkeysDirty()
+	{
+		MarkStateDirty();
 	}
 }
