@@ -56,15 +56,31 @@ namespace YimMenu::Hooks
 {
 	void Protections::LogSyncNode(CProjectBaseSyncDataNode* node, SyncNodeId& id, NetObjType type, rage::netObject* object, Player& player)
 	{
-		int object_id = -1;
+		// targeted crash protection based on .map analysis - prevent null pointer dereference
+		if (!node)
+		{
+			LOG(WARNING) << "LogSyncNode: Blocked null node pointer";
+			return;
+		}
 
-		if (object)
-			object_id = object->m_ObjectId;
+		if (!object)
+		{
+			LOG(WARNING) << "LogSyncNode: Blocked null object pointer";
+			return;
+		}
 
-		if (player.IsValid())
-			LOG(INFO) << player.GetName() << ": " << id.name << ", " << object_id;
+		// validate player before accessing
+		if (!player.IsValid())
+		{
+			LOG(INFO) << "UNKNOWN: " << id.name << " " << object->m_ObjectId;
+			// continue processing but don't access player data
+		}
 		else
-			LOG(INFO) << "UNKNOWN: " << id.name << " " << object_id;
+		{
+			LOG(INFO) << player.GetName() << ": " << id.name << ", " << object->m_ObjectId;
+		}
+
+		int object_id = object->m_ObjectId;
 
 		switch (id)
 		{
