@@ -13,6 +13,11 @@
 #include <entity/CDynamicEntity.hpp>
 #include <network/CNetObjectMgr.hpp>
 #include <network/netObject.hpp>
+#include <cmath>
+#include "game/rdr/Network.hpp"
+
+
+#include "game/backend/CrashSignatures.hpp"
 
 
 // TODO: remove this file!!!
@@ -59,7 +64,7 @@ namespace YimMenu::Teleport
 
 		return true;
 	}
-	
+
 	// Entity typdef is being ambiguous with Entity class
 	inline bool TeleportEntity(int ent, rage::fvector3 coords, bool loadGround = false)
 	{
@@ -128,26 +133,37 @@ namespace YimMenu::Teleport
 
 	inline bool TeleportPlayerToCoords(Player player, Vector3 coords)
 	{
-		auto handle = player.GetPed().GetHandle();
+		if (!player.IsValid())
+			return false;
 
+		auto playerPed = player.GetPed();
+		if (!playerPed.IsValid())
+			return false;
+
+		int handle = playerPed.GetHandle();
 		if (ENTITY::IS_ENTITY_DEAD(handle))
 		{
 			Notifications::Show("Teleport", "The player you want to teleport is dead!", NotificationType::Error);
 			return false;
 		}
 
-		
-		if (player.GetPed().GetMount())
+		if (playerPed.GetMount())
 		{
-			player.GetPed().GetMount().ForceControl();
+			playerPed.GetMount().ForceControl();
 		}
 
-		auto ent = Vehicle::Create("buggy01"_J, player.GetPed().GetPosition());
+		auto playerPos = playerPed.GetPosition();
+
+		Vehicle ent = Vehicle::Create("buggy01"_J, playerPos);
+		if (!ent.IsValid())
+			return false;
+
 		auto ptr = ent.GetPointer<CDynamicEntity*>();
 
 		if (!ptr || !ptr->m_NetObject)
 		{
 			Notifications::Show("Teleport", "Vehicle net object is null!", NotificationType::Error);
+			ent.Delete();
 			return false;
 		}
 
@@ -155,18 +171,29 @@ namespace YimMenu::Teleport
 		ent.SetCollision(false);
 		ent.SetFrozen(true);
 
-		auto vehId  = ptr->m_NetObject->m_ObjectId;
-		auto playerId = player.GetPed().GetPointer<CDynamicEntity*>()->m_NetObject->m_ObjectId;
+		auto vehId = ptr->m_NetObject->m_ObjectId;
+
+		auto playerPedPtr = playerPed.GetPointer<CDynamicEntity*>();
+		if (!playerPedPtr || !playerPedPtr->m_NetObject)
+		{
+			Notifications::Show("Teleport", "Player net object is null!", NotificationType::Error);
+			ent.Delete();
+			return false;
+		}
+
+		std::uint16_t playerId = playerPedPtr->m_NetObject->m_ObjectId;
 		Spoofing::RemotePlayerTeleport remoteTp = {playerId, {coords.x, coords.y, coords.z}};
 
 		g_SpoofingStorage.m_RemotePlayerTeleports.emplace(vehId, remoteTp);
 
-		if (player.IsValid() && PED::IS_PED_IN_ANY_VEHICLE(player.GetPed().GetHandle(), false))
-			TASK::CLEAR_PED_TASKS_IMMEDIATELY(player.GetPed().GetHandle(), true, true);
+		TASK::CLEAR_PED_TASKS_IMMEDIATELY(handle, true, true);
 
 		for (int i = 0; i < 40; i++)
 		{
 			ScriptMgr::Yield(25ms);
+
+			if (!player.IsValid() || !ent.IsValid())
+				break;
 
 			Pointers.TriggerGiveControlEvent(player.GetHandle(), ptr->m_NetObject, 3);
 
@@ -177,8 +204,65 @@ namespace YimMenu::Teleport
 			}
 		}
 
-		ent.ForceControl();
-		ent.Delete();
+		// comprehensive cleanup to prevent buggy vehicles
+		if (ent.IsValid())
+		{
+			// first, eject any occupants from the teleport vehicle
+			for (int seat = -1; seat < 8; seat++)
+			{
+				if (!VEHICLE::IS_VEHICLE_SEAT_FREE(ent.GetHandle(), seat))
+				{
+					int occupant = VEHICLE::GET_PED_IN_VEHICLE_SEAT(ent.GetHandle(), seat);
+					if (ENTITY::DOES_ENTITY_EXIST(occupant))
+					{
+						TASK::TASK_LEAVE_VEHICLE(occupant, ent.GetHandle(), 0, 0);
+					}
+				}
+			}
+
+			// wait for occupants to exit
+			for (int j = 0; j < 10; j++)
+			{
+				ScriptMgr::Yield(50ms);
+				bool anyOccupants = false;
+				for (int seat = -1; seat < 8; seat++)
+				{
+					if (!VEHICLE::IS_VEHICLE_SEAT_FREE(ent.GetHandle(), seat))
+					{
+						anyOccupants = true;
+						break;
+					}
+				}
+				if (!anyOccupants)
+					break;
+			}
+
+			// force control and delete locally + broadcast explicit remove to all peers
+			ent.ForceControl();
+			ScriptMgr::Yield(50ms);
+			if (ent.HasControl())
+			{
+				// use network helper to force remove for all tokens, then delete locally
+				auto net = ent.GetNetworkObject();
+				if (net)
+				{
+					Network::ForceRemoveNetworkEntity(net->m_ObjectId, -1, true);
+				}
+				else
+				{
+					ent.Delete();
+				}
+			}
+			else
+			{
+				// fallback if we failed to take control: try explicit remove anyway
+				auto net = ent.GetNetworkObject();
+				if (net)
+					Network::ForceRemoveNetworkEntity(net->m_ObjectId, -1, true);
+				else
+					ent.Delete();
+			}
+		}
 
 		std::erase_if(g_SpoofingStorage.m_RemotePlayerTeleports, [vehId](auto& obj) {
 			return obj.first == vehId;
