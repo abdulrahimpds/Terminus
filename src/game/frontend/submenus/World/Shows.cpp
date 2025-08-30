@@ -10,6 +10,7 @@
 #include "game/rdr/Natives.hpp"
 #include "game/rdr/Player.hpp"
 #include "game/rdr/Scripts.hpp"
+#include "game/rdr/Network.hpp"
 
 #include <network/CNetObjectMgr.hpp>
 
@@ -461,6 +462,50 @@ namespace YimMenu::Submenus
 		return nullptr;
 	}
 
+	// --- helper: nuke an entity regardless of scene/control ---
+	static void HardKillShowEntity(Entity e)
+	{
+		if (!e) return;
+
+		const auto h = e.GetHandle();
+
+		// 1) break scene/task bindings first
+		if (ENTITY::IS_ENTITY_ATTACHED(h))
+			ENTITY::DETACH_ENTITY(h, true, true);
+		if (e.IsPed()) {
+			TASK::CLEAR_PED_TASKS_IMMEDIATELY(h, true, true);
+			PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(h, false);
+		}
+
+		// 2) if networked, broadcast a remove (all tokens) and also unregister locally if possible
+		if (e.IsNetworked()) {
+			if (auto net = e.GetNetworkObject()) {
+				// broadcast remove to everyone, try all tokens
+				::YimMenu::Network::ForceRemoveNetworkEntity(net->m_ObjectId, -1, /*delete_locally=*/true, {});
+			}
+		}
+
+		// 3) force local delete (don’t rely on your global Entity::Delete control path)
+		if (!ENTITY::IS_ENTITY_A_MISSION_ENTITY(h))
+			ENTITY::SET_ENTITY_AS_MISSION_ENTITY(h, true, true);
+		auto tmp = h;
+		ENTITY::DELETE_ENTITY(&tmp);
+	}
+
+	// --- helper: remove the animscene clone so it stops owning/respawning entities ---
+	static void HardKillAnimScene(int handle)
+	{
+		if (handle == -1) return;
+
+		// broadcast removal of the animscene clone (you already have this function)
+		::YimMenu::Network::ForceRemoveAnimScene(handle);
+
+		// delete the scene locally if it still exists
+		if (ANIMSCENE::DOES_ANIM_SCENE_EXIST(handle)) {
+			ANIMSCENE::_DELETE_ANIM_SCENE(handle);
+		}
+	}
+
 	static void CREATE_PED(rage::scrNativeCallContext* ctx)
 	{
 		auto override = GetOverridePed(SceneTypeFromScript(SCRIPTS::GET_HASH_OF_THIS_SCRIPT_NAME()), ctx->GetArg<Hash>(0));
@@ -557,18 +602,18 @@ namespace YimMenu::Submenus
 	{
 		UnloadSet(g_RunningSceneType);
 		SCRIPTS::TERMINATE_THREAD(g_RunningSceneScriptID);
-		MISC::CLEAR_AREA(2546.5646f, -1301.4119f, 48.3564f, 500.0f, -1); // clear stage area
-		for (auto& entity : g_ShowEntities)
-		{
-			entity.Delete();
-		}
-		for (auto& entity : g_AudienceMembers)
-		{
-			if (entity)
-			{
-				entity.Delete();
-			}
-		}
+
+		// Nuke the animscene network object first so it releases its actors/props
+		HardKillAnimScene(g_RunningSceneAnimscene);
+
+		// Give the engine a tiny moment to drop references
+		ScriptMgr::Yield(50ms);
+
+		MISC::CLEAR_AREA(2546.5646f, -1301.4119f, 48.3564f, 500.0f, -1);
+
+		for (auto& e : g_ShowEntities)  HardKillShowEntity(e);
+		for (auto& e : g_AudienceMembers) HardKillShowEntity(e);
+
 		g_ShowEntities.clear();
 		g_AudienceMembers.clear();
 		g_RunningSceneScriptID  = -1;
