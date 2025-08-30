@@ -14,26 +14,40 @@
 
 namespace YimMenu::Submenus
 {
-	void GET_NUMBER_OF_THREADS_RUNNING_THE_SCRIPT_WITH_THIS_HASH(rage::scrNativeCallContext* ctx)
-	{
-		if (ctx->GetArg<int>(0) == "mp_intro"_J)
-		{
-			ctx->SetReturnValue<int>(1);
-		}
-		else
-		{
-			ctx->SetReturnValue<int>(SCRIPTS::GET_NUMBER_OF_THREADS_RUNNING_THE_SCRIPT_WITH_THIS_HASH(ctx->GetArg<int>(0)));
-		}
-	}
-
-	void _GET_META_PED_TYPE(rage::scrNativeCallContext* ctx)
-	{
-		ctx->SetReturnValue<int>(4);
-	}
+	// Native hook functions are now defined in Spawner.cpp to avoid duplicate symbols
 
 	static bool IsPedModelInList(const std::string& model)
 	{
 		return Data::g_PedModels.contains(Joaat(model));
+	}
+
+	static std::string GetDefaultWeaponForPed(const std::string& pedModel)
+	{
+		auto modelHash = Joaat(pedModel);
+
+		// story character specific weapons
+		switch (modelHash)
+		{
+		case "player_zero"_J: // Arthur
+			return "WEAPON_REVOLVER_SCHOFIELD";
+		case "player_three"_J: // John
+			return "WEAPON_REVOLVER_SCHOFIELD";
+		case "cs_micahbell"_J: // Micah
+			return "WEAPON_REVOLVER_DOUBLEACTION";
+		case "cs_dutch"_J: // Dutch
+			return "WEAPON_REVOLVER_SCHOFIELD";
+		case "cs_javierescuella"_J: // Javier
+			return "WEAPON_REVOLVER_SCHOFIELD";
+		case "cs_charlessmith"_J: // Charles
+			return "WEAPON_BOW";
+		case "cs_mrsadler"_J: // Sadie
+			return "WEAPON_REPEATER_WINCHESTER";
+		case "CS_miltonandrews"_J: // Milton
+			return "WEAPON_PISTOL_MAUSER";
+		default:
+			// default weapons for generic peds
+			return "WEAPON_REVOLVER_CATTLEMAN";
+		}
 	}
 
 	static int PedSpawnerInputCallback(ImGuiInputTextCallbackData* data)
@@ -68,15 +82,12 @@ namespace YimMenu::Submenus
 	{
 		ImGui::PushID("peds"_J);
 
-		static auto model_hook = ([]() {
-			NativeHooks::AddHook("long_update"_J, NativeIndex::GET_NUMBER_OF_THREADS_RUNNING_THE_SCRIPT_WITH_THIS_HASH, GET_NUMBER_OF_THREADS_RUNNING_THE_SCRIPT_WITH_THIS_HASH);
-			NativeHooks::AddHook("long_update"_J, NativeIndex::_GET_META_PED_TYPE, _GET_META_PED_TYPE);
-			return true;
-		}());
+		// Native hooks are now registered in Spawner.cpp to avoid duplicate symbols
 
 		static std::string pedModelBuffer;
 		static float scale = 1;
-		static bool dead, invis, godmode, freeze, companion, sedated;
+		static int variation = 0;
+		static bool dead, invis, godmode, freeze, companion, sedated, armed;
 		static int formation;
 		static std::vector<YimMenu::Ped> spawnedPeds;
 		InputTextWithHint("##pedmodel", "Ped Model", &pedModelBuffer, ImGuiInputTextFlags_CallbackCompletion, nullptr, PedSpawnerInputCallback)
@@ -107,6 +118,7 @@ namespace YimMenu::Submenus
 		ImGui::Checkbox("Invisible", &invis);
 		ImGui::Checkbox("GodMode", &godmode);
 		ImGui::Checkbox("Frozen", &freeze);
+		ImGui::Checkbox("Armed", &armed);
 		ImGui::Checkbox("Companion", &companion);
 		if (companion)
 		{
@@ -131,6 +143,11 @@ namespace YimMenu::Submenus
 		}
 		ImGui::SliderFloat("Scale", &scale, 0.1, 10);
 
+		ImGui::SetNextItemWidth(150);
+		ImGui::InputInt("Variation", &variation);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("outfit variation number (0 = random/default)");
+
 		if (ImGui::Button("Spawn"))
 		{
 			FiberPool::Push([] {
@@ -150,10 +167,37 @@ namespace YimMenu::Submenus
 
 				ped.SetInvincible(godmode);
 
+				// Apply anti-lasso protection if godmode is enabled
+				if (godmode)
+				{
+					// anti ragdoll
+					ped.SetRagdoll(false);
+					// anti lasso
+					PED::SET_PED_LASSO_HOGTIE_FLAG(ped.GetHandle(), (int)LassoFlags::LHF_CAN_BE_LASSOED, false);
+					PED::SET_PED_LASSO_HOGTIE_FLAG(ped.GetHandle(), (int)LassoFlags::LHF_CAN_BE_LASSOED_BY_FRIENDLY_AI, false);
+					PED::SET_PED_LASSO_HOGTIE_FLAG(ped.GetHandle(), (int)LassoFlags::LHF_CAN_BE_LASSOED_BY_FRIENDLY_PLAYERS, false);
+					PED::SET_PED_LASSO_HOGTIE_FLAG(ped.GetHandle(), (int)LassoFlags::LHF_DISABLE_IN_MP, true);
+					// anti hogtie
+					ENTITY::_SET_ENTITY_CARRYING_FLAG(ped.GetHandle(), (int)CarryingFlags::CARRYING_FLAG_CAN_BE_HOGTIED, false);
+				}
+
 				ped.SetVisible(!invis);
 
 				if (scale != 1.0f)
 					ped.SetScale(scale);
+
+				if (variation > 0)
+					ped.SetVariation(variation);
+
+				// give weapon if armed is enabled and ped is not an animal
+				if (armed && !ped.IsAnimal())
+				{
+					auto weapon = GetDefaultWeaponForPed(pedModelBuffer);
+					WEAPON::GIVE_WEAPON_TO_PED(ped.GetHandle(), Joaat(weapon), 100, true, false, 0, true, 0.5f, 1.0f, 0x2CD419DC, true, 0.0f, false);
+					WEAPON::SET_PED_INFINITE_AMMO(ped.GetHandle(), true, Joaat(weapon));
+					ScriptMgr::Yield();
+					WEAPON::SET_CURRENT_PED_WEAPON(ped.GetHandle(), "WEAPON_UNARMED"_J, true, 0, false, false);
+				}
 
 				ped.SetConfigFlag(PedConfigFlag::IsTranquilized, sedated);
 
@@ -165,10 +209,10 @@ namespace YimMenu::Submenus
 					if (!PED::DOES_GROUP_EXIST(group))
 					{
 						group = PED::CREATE_GROUP(0);
-						PED::SET_PED_AS_GROUP_LEADER(YimMenu::Self::GetPed().GetHandle(), group, true);
+						PED::SET_PED_AS_GROUP_LEADER(YimMenu::Self::GetPed().GetHandle(), group, false);
 					}
 
-					ENTITY::SET_ENTITY_AS_MISSION_ENTITY(ped.GetHandle(), false, false);
+					ENTITY::SET_ENTITY_AS_MISSION_ENTITY(ped.GetHandle(), true, true);
 					PED::SET_PED_AS_GROUP_MEMBER(ped.GetHandle(), group);
 					PED::SET_PED_CAN_BE_TARGETTED_BY_PLAYER(ped.GetHandle(), YimMenu::Self::GetPlayer().GetId(), false);
 					PED::SET_PED_RELATIONSHIP_GROUP_HASH(
@@ -176,7 +220,7 @@ namespace YimMenu::Submenus
 
 					PED::SET_GROUP_FORMATION(PED::GET_PED_GROUP_INDEX(ped.GetHandle()), formation);
 
-					DECORATOR::DECOR_SET_INT(ped.GetHandle(), "SH_CMP_companion", 1);
+					DECORATOR::DECOR_SET_INT(ped.GetHandle(), "SH_CMP_companion", 2);
 
 					if (ped.IsAnimal())
 					{
@@ -194,16 +238,16 @@ namespace YimMenu::Submenus
 						FLOCK::SET_ANIMAL_TUNING_FLOAT_PARAM(ped.GetHandle(), 111, 0.0);
 						FLOCK::SET_ANIMAL_TUNING_FLOAT_PARAM(ped.GetHandle(), 107, 0.0);
 					}
-					PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(ped.GetHandle(), true);
+					PED::SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(ped.GetHandle(), false);
 
-					ped.SetConfigFlag(PedConfigFlag::_0x16A14D9A, true);
+					ped.SetConfigFlag(PedConfigFlag::_0x16A14D9A, false);
 					ped.SetConfigFlag(PedConfigFlag::_DisableHorseFleeILO, true);
-					ped.SetConfigFlag(PedConfigFlag::_0x74F95F2E, true);
-					ped.SetConfigFlag(PedConfigFlag::Avoidance_Ignore_All, true);
-					ped.SetConfigFlag(PedConfigFlag::DisableShockingEvents, true);
+					ped.SetConfigFlag(PedConfigFlag::_0x74F95F2E, false);
+					ped.SetConfigFlag(PedConfigFlag::Avoidance_Ignore_All, false);
+					ped.SetConfigFlag(PedConfigFlag::DisableShockingEvents, false);
 					ped.SetConfigFlag(PedConfigFlag::DisablePedAvoidance, false);
-					ped.SetConfigFlag(PedConfigFlag::DisableExplosionReactions, true);
-					ped.SetConfigFlag(PedConfigFlag::DisableEvasiveStep, true);
+					ped.SetConfigFlag(PedConfigFlag::DisableExplosionReactions, false);
+					ped.SetConfigFlag(PedConfigFlag::DisableEvasiveStep, false);
 					ped.SetConfigFlag(PedConfigFlag::DisableHorseGunshotFleeResponse, true);
 
 					auto blip = MAP::BLIP_ADD_FOR_ENTITY("BLIP_STYLE_COMPANION"_J, ped.GetHandle());
@@ -225,9 +269,30 @@ namespace YimMenu::Submenus
 
 				PLAYER::SET_PLAYER_MODEL(Self::GetPlayer().GetId(), model, false);
 				Self::Update();
-				PED::_SET_RANDOM_OUTFIT_VARIATION(Self::GetPed().GetHandle(), true);
+
+				if (variation > 0)
+					Self::GetPed().SetVariation(variation);
+				else
+					PED::_SET_RANDOM_OUTFIT_VARIATION(Self::GetPed().GetHandle(), true);
+
+				// give weapon if armed is enabled and ped is not an animal
+				if (armed && !Self::GetPed().IsAnimal())
+				{
+					auto weapon = GetDefaultWeaponForPed(pedModelBuffer);
+					WEAPON::GIVE_WEAPON_TO_PED(Self::GetPed().GetHandle(), Joaat(weapon), 100, true, false, 0, true, 0.5f, 1.0f, 0x2CD419DC, true, 0.0f, false);
+					WEAPON::SET_PED_INFINITE_AMMO(Self::GetPed().GetHandle(), true, Joaat(weapon));
+					ScriptMgr::Yield();
+					WEAPON::SET_CURRENT_PED_WEAPON(Self::GetPed().GetHandle(), "WEAPON_UNARMED"_J, true, 0, false, false);
+				}
+
 				STREAMING::SET_MODEL_AS_NO_LONGER_NEEDED(model);
 			});
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Story Gang"))
+		{
+			// placeholder for story gang functionality
+			// will be implemented later with specific gang variants
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Cleanup Peds"))
@@ -240,10 +305,14 @@ namespace YimMenu::Submenus
 						if (it->GetMount())
 						{
 							it->GetMount().ForceControl();
+							if (it->GetMount().HasControl())
+								it->GetMount().ForceSync();
 							it->GetMount().Delete();
 						}
 
 						it->ForceControl();
+						if (it->HasControl())
+							it->ForceSync();
 						it->Delete();
 					}
 					it = spawnedPeds.erase(it);

@@ -1,9 +1,6 @@
 #include "World.hpp"
 
-#include "World/PedSpawner.hpp"
 #include "World/Shows.hpp"
-#include "World/Train.hpp"
-#include "World/VehicleSpawner.hpp"
 #include "World/Weather.hpp"
 #include "core/commands/Commands.hpp"
 #include "core/commands/HotkeySystem.hpp"
@@ -107,26 +104,8 @@ namespace YimMenu::Submenus
 		}));
 
 
-		auto spawners            = std::make_shared<Category>("Spawners");
-		auto pedSpawnerGroup     = std::make_shared<Group>("Ped Spawner");
-		auto vehicleSpawnerGroup = std::make_shared<Group>("Vehicle Spawner");
-		auto trainSpawnerGroup   = std::make_shared<Group>("Train Spawner");
 
-		pedSpawnerGroup->AddItem(std::make_shared<ImGuiItem>([] {
-			RenderPedSpawnerMenu();
-		}));
 
-		vehicleSpawnerGroup->AddItem(std::make_shared<ImGuiItem>([] {
-			RenderVehicleSpawnerMenu();
-		}));
-
-		trainSpawnerGroup->AddItem(std::make_shared<ImGuiItem>([] {
-			RenderTrainsMenu();
-		}));
-
-		spawners->AddItem(pedSpawnerGroup);
-		spawners->AddItem(vehicleSpawnerGroup);
-		spawners->AddItem(trainSpawnerGroup);
 
 		auto poolCounter = std::make_shared<ImGuiItem>([] {
 			if (GetPedPool())
@@ -158,24 +137,8 @@ namespace YimMenu::Submenus
 		bringOpts->AddItem(std::make_shared<CommandItem>("bringpeds"_J));
 		bringOpts->AddItem(std::make_shared<CommandItem>("bringvehs"_J));
 		bringOpts->AddItem(std::make_shared<CommandItem>("bringobjs"_J));
-		auto minigames = std::make_shared<Group>("Minigames", 1);
-		minigames->AddItem(std::make_shared<BoolCommandItem>("undeadnightmare"_J));
-		minigames->AddItem(std::make_shared<ConditionalItem>("undeadnightmare"_J, std::make_shared<BoolCommandItem>("zombieslogging"_J)));
-		minigames->AddItem(std::make_shared<ConditionalItem>("undeadnightmare"_J, std::make_shared<BoolCommandItem>("hardmode"_J)));
-		auto misc = std::make_shared<Group>("Misc");
+		auto misc = std::make_shared<Group>("Misc", 1);
 		misc->AddItem(std::make_shared<BoolCommandItem>("disableguardzones"_J));
-		auto eventOverride = std::make_shared<Group>("", 1);
-		eventOverride->AddItem(std::make_shared<BoolCommandItem>("eventoverrideenabled"_J));
-		eventOverride->AddItem(std::make_shared<ConditionalItem>("eventoverrideenabled"_J, std::make_shared<ListCommandItem>("eventoverride"_J)));
-		misc->AddItem(std::move(eventOverride));
-		misc->AddItem(std::make_shared<CommandItem>("mapeditor"_J));
-
-		main->AddItem(std::move(poolCounter));
-		main->AddItem(std::move(killPeds));
-		main->AddItem(std::move(deleteOpts));
-		main->AddItem(std::move(bringOpts));
-		main->AddItem(std::move(minigames));
-		main->AddItem(std::move(misc));
 
 
 		shows->AddItem(std::make_shared<ImGuiItem>([] {
@@ -183,9 +146,14 @@ namespace YimMenu::Submenus
 		}));
 
 
+		main->AddItem(std::move(poolCounter));
+		main->AddItem(std::move(killPeds));
+		main->AddItem(std::move(deleteOpts));
+		main->AddItem(std::move(bringOpts));
+		main->AddItem(std::move(misc));
+
 		AddCategory(std::move(main));
 		AddCategory(std::move(weather));
-		AddCategory(std::move(spawners));
 		AddCategory(std::move(shows));
 		AddCategory(std::move(time));
 	}
