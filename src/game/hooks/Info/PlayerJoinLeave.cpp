@@ -3,8 +3,12 @@
 #include "core/hooking/DetourHook.hpp"
 #include "game/backend/Players.hpp"
 #include "game/backend/Self.hpp"
+#include "game/backend/ScriptMgr.hpp"
+#include "game/backend/FiberPool.hpp"
 #include "game/frontend/ChatDisplay.hpp"
 #include "game/hooks/Hooks.hpp"
+#include "game/rdr/Natives.hpp"
+#include "game/features/players/toxic/AttachmentTracker.hpp"
 #include "network/CNetGamePlayer.hpp"
 
 #include <player/CPlayerInfo.hpp>
@@ -44,6 +48,48 @@ namespace YimMenu::Hooks
 			if (player == Self::GetPlayer().GetHandle())
 			{
 				ChatDisplay::Clear();
+			}
+
+			// check if we're attached to the player who is leaving
+			if (Features::g_AttachedToPlayerId == player->m_PlayerIndex && Features::g_AttachedToPlayerHandle != 0)
+			{
+				FiberPool::Push([] {
+					auto selfPed = Self::GetPed();
+					if (selfPed.IsValid() && ENTITY::IS_ENTITY_ATTACHED_TO_ANY_PED(selfPed.GetHandle()))
+					{
+						// detach from the leaving player
+						ENTITY::DETACH_ENTITY(selfPed.GetHandle(), true, true);
+						PED::SET_PED_SHOULD_PLAY_IMMEDIATE_SCENARIO_EXIT(selfPed.GetHandle());
+						TASK::CLEAR_PED_TASKS_IMMEDIATELY(selfPed.GetHandle(), true, true);
+
+						Features::g_AttachedToPlayerHandle = 0;
+						Features::g_AttachedToPlayerId = -1;
+
+						// force model refresh to fix invisibility issue
+						selfPed.SetVisible(false);
+						ScriptMgr::Yield(50ms);
+						selfPed.SetVisible(true);
+
+						if (selfPed.IsNetworked())
+						{
+							selfPed.ForceSync();
+						}
+
+						// additional refresh by reapplying current model
+						auto selfPlayer = Self::GetPlayer();
+						if (selfPlayer.IsValid())
+						{
+							auto currentModel = selfPed.GetModel();
+							if (STREAMING::HAS_MODEL_LOADED(currentModel))
+							{
+								PLAYER::SET_PLAYER_MODEL(selfPlayer.GetId(), currentModel, false);
+								Self::Update();
+							}
+						}
+
+						Notifications::Show("Attachment", "automatically detached due to player leaving session", NotificationType::Info);
+					}
+				});
 			}
 
 			Players::OnPlayerLeave(player);

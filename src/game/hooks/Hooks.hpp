@@ -150,6 +150,7 @@ namespace YimMenu::Hooks
 		extern void PlayerHasLeft(CNetGamePlayer* player);
 
 		extern void HandleSessionEvent(rage::rlScSessionMultiplayer* mp, CNetworkScServerConnection* cxn, rage::rlScSessionEvent* evt);
+		extern void UpdateStoredPlayerModel(uint32_t model, int variation);
 	}
 
 	namespace Spoofing
