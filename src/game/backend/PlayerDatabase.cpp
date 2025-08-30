@@ -88,14 +88,24 @@ namespace YimMenu
 
 	void PlayerDatabase::AddPlayer(uint64_t rid, std::string name)
 	{
-		if (GetPlayer(rid) == nullptr)
+		if (auto existing = GetPlayer(rid))
 		{
-			auto player  = std::make_shared<persistent_player>();
-			player->rid  = rid;
-			player->name = name;
-			m_Data[rid]  = player;
+			// ensure block join for existing record as well
+			existing->block_join = true;
+			if (!name.empty() && existing->name != name)
+			{
+				existing->name = name;
+			}
 			Save();
+			return;
 		}
+
+		auto player        = std::make_shared<persistent_player>();
+		player->rid        = rid;
+		player->name       = name;
+		player->block_join = true; // default-enable block join when added via UI button
+		m_Data[rid]        = player;
+		Save();
 	}
 
 	std::shared_ptr<persistent_player> PlayerDatabase::GetOrCreatePlayer(uint64_t rid, std::string name)
