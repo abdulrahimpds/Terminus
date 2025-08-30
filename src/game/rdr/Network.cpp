@@ -22,6 +22,9 @@ namespace YimMenu::Network
 
 	void ForceRemoveNetworkEntity(std::uint16_t net_id, int ownership_token, bool delete_locally, Player for_player)
 	{
+		// guard: invalid or already gone objects should not be processed
+		if (!Pointers.GetNetObjectById(net_id) && ownership_token != -1 && delete_locally)
+			return;
 		auto mapped_id = (*Pointers.ObjectIdMap)[net_id];
 
 		char buf[0x200]{};

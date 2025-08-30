@@ -2,6 +2,7 @@
 
 #include "Natives.hpp"
 #include "game/backend/ScriptMgr.hpp"
+#include "game/backend/SafeNatives.hpp"
 
 
 namespace YimMenu
@@ -100,7 +101,7 @@ namespace YimMenu
 	{
 		ENTITY_ASSERT_VALID();
 		ENTITY_ASSERT_CONTROL();
-		PED::SET_PED_CAN_RAGDOLL(GetHandle(), enabled);
+		SafeNatives::SET_PED_CAN_RAGDOLL_SAFE(GetHandle(), enabled);
 	}
 
 	float Ped::GetMotivation(MotivationState state)
