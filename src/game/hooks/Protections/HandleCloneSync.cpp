@@ -8,6 +8,11 @@
 #include "game/rdr/Natives.hpp"
 #include "game/pointers/Pointers.hpp"
 
+#include "game/backend/PlayerData.hpp"
+#include <network/netObject.hpp>
+
+#include "game/rdr/Player.hpp"
+
 #include <network/CNetGamePlayer.hpp>
 #include <rage/datBitBuffer.hpp>
 
@@ -87,6 +92,16 @@ namespace YimMenu::Hooks
 			             << " dst:" << HEX(reinterpret_cast<uintptr_t>(dst))
 			             << " buffer:" << HEX(reinterpret_cast<uintptr_t>(buffer));
 			return 0;
+		}
+
+// quarantine gate: drop all clone sync while sender is quarantined
+		if (src)
+		{
+			auto sp = Player(src);
+			if (sp.GetData().IsSyncsBlocked())
+			{
+				return 0;
+			}
 		}
 
 		// crash signature checking with pattern detection
@@ -210,6 +225,18 @@ namespace YimMenu::Hooks
 		{
 			Notifications::Show("Protections", std::format("Blocked kick from mount from {}", src->GetName()), NotificationType::Warning);
 			return 0;
+		}
+
+		// validate entity type to mitigate spoofed type sync (sunrise sync crash)
+		if (auto obj = Pointers.GetNetObjectById(objectId))
+		{
+			if (obj->m_ObjectType != objectType)
+			{
+				LOGF(WARNING, "HandleCloneSync: Blocked entity type spoof (objId {} actual {} != claimed {}) from {}", objectId, (int)obj->m_ObjectType, (int)objectType, src ? src->GetName() : "unknown");
+				try { Player(src).AddDetection(Detection::TRIED_CRASH_PLAYER); } catch (...) {}
+				Player(src).GetData().QuarantineFor(std::chrono::seconds(10));
+				return 0;
+			}
 		}
 
 		// wrap the critical section for maximum protection

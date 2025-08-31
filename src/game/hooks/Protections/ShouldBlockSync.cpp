@@ -45,6 +45,8 @@
 #include <unordered_set>
 #include <network/CNetworkScSession.hpp>
 #include <train/CTrainConfig.hpp>
+#include <excpt.h>
+#include <windows.h>
 
 #define BLOCK_CRASHES 1
 
@@ -230,9 +232,73 @@ namespace
 		});
 	}
 
+	// best-effort readable-memory check to avoid AV on malformed nodes
+	static bool IsReadable(const void* p, size_t len)
+	{
+		if (!p || len == 0) return false;
+		MEMORY_BASIC_INFORMATION mbi{};
+		const unsigned char* addr = static_cast<const unsigned char*>(p);
+		size_t remaining = len;
+		while (remaining)
+		{
+			if (!VirtualQuery(addr, &mbi, sizeof(mbi)))
+				return false;
+			if (mbi.State != MEM_COMMIT)
+				return false;
+			DWORD prot = mbi.Protect & 0xFF;
+			if (prot == PAGE_NOACCESS || (mbi.Protect & PAGE_GUARD))
+				return false;
+			const unsigned char* regionEnd = static_cast<const unsigned char*>(mbi.BaseAddress) + mbi.RegionSize;
+			if (addr >= regionEnd)
+				return false;
+			size_t avail = static_cast<size_t>(regionEnd - addr);
+			size_t step = std::min(remaining, avail);
+			addr += step;
+			remaining -= step;
+		}
+		return true;
+	}
+
+	// entity type gating to prevent node/type spoofing
+	static bool IsNodeAllowedForType(SyncNodeId id, NetObjType type)
+	{
+		switch (id)
+		{
+		// creation nodes only (gate here to minimize false positives)
+		case "CPedCreationNode"_J:
+			return type == NetObjType::Player || type == NetObjType::Ped || type == NetObjType::Animal || type == NetObjType::Horse;
+		case "CAnimalCreationNode"_J:
+			return type == NetObjType::Animal || type == NetObjType::Horse || type == NetObjType::Ped;
+		case "CPlayerCreationNode"_J:
+			return type == NetObjType::Player;
+		case "CObjectCreationNode"_J:
+			return type == NetObjType::Object;
+		case "CPropSetCreationNode"_J:
+			return type == NetObjType::PropSet;
+		case "CProjectileCreationNode"_J:
+			return type == NetObjType::WorldProjectile;
+		case "CVehicleCreationNode"_J:
+			return type == NetObjType::DraftVeh || type == NetObjType::Boat;
+		case "CDraftVehCreationNodeThing"_J:
+			return type == NetObjType::DraftVeh;
+
+		// for state/attach/migration nodes we default-allow and let targeted logic handle abuse
+		default:
+			return true;
+		}
+	}
+
 	// note that object can be nullptr here if it hasn't been created yet (i.e. in the creation queue)
 	bool ShouldBlockNode(CProjectBaseSyncDataNode* node, SyncNodeId id, NetObjType type, rage::netObject* object)
 	{
+		// entity type spoofing guard
+		if (!IsNodeAllowedForType(id, type))
+		{
+			SyncBlocked("entity type spoofing");
+			if (object)
+				DeleteSyncObjectLater(object->m_ObjectId);
+			return true;
+		}
 		switch (id)
 		{
 		case "CPedCreationNode"_J:
@@ -245,6 +311,17 @@ namespace
 				data.m_ModelHash = "MP_MALE"_J;
 				data.m_BannedPed = true; // blocking this seems difficult
 				return true;
+			}
+			// ped flood control
+			if (auto p = Protections::GetSyncingPlayer())
+			{
+				if (p.GetData().m_PedFloodLimit.Process() && p.GetData().m_PedFloodLimit.ExceededLastProcess())
+				{
+					SyncBlocked("ped flood");
+					if (object)
+						DeleteSyncObject(object->m_ObjectId);
+					return true;
+				}
 			}
 			break;
 		}
@@ -265,6 +342,18 @@ namespace
 				if (object)
 					DeleteSyncObject(object->m_ObjectId);
 				return true;
+			}
+
+			// animal flood control
+			if (auto p = Protections::GetSyncingPlayer())
+			{
+				if (p.GetData().m_PedFloodLimit.Process() && p.GetData().m_PedFloodLimit.ExceededLastProcess())
+				{
+					SyncBlocked("animal flood");
+					if (object)
+						DeleteSyncObject(object->m_ObjectId);
+					return true;
+				}
 			}
 			break;
 		}
@@ -289,6 +378,18 @@ namespace
 					DeleteSyncObject(object->m_ObjectId);
 				SyncBlocked("cage spawn", GetObjectCreator(object));
 				return true;
+			}
+
+			// object flood control
+			if (auto p = Protections::GetSyncingPlayer())
+			{
+				if (p.GetData().m_ObjectFloodLimit.Process() && p.GetData().m_ObjectFloodLimit.ExceededLastProcess())
+				{
+					SyncBlocked("object flood");
+					if (object)
+						DeleteSyncObject(object->m_ObjectId);
+					return true;
+				}
 			}
 
 			break;
@@ -345,18 +446,61 @@ namespace
 			auto& data = node->GetData<CPhysicalAttachData>();
 			if (auto local = Pointers.GetLocalPed(); local && local->m_NetObject)
 			{
-				if (data.m_IsAttached && data.m_AttachObjectId == local->m_NetObject->m_ObjectId && Features::_BlockAttachments.GetState())
+				const int localPedId = local->m_NetObject->m_ObjectId;
+				int mountId = -1;
 				{
-					SyncBlocked("attachment", GetObjectCreator(object));
-					Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_ATTACH);
-					DeleteSyncObject(object->m_ObjectId);
-					return true;
+					auto m = Self::GetMount();
+					if (m && m.IsValid())
+						mountId = m.GetNetworkObjectId();
+				}
+				int vehicleId = -1;
+				{
+					auto v = Self::GetVehicle();
+					if (v && v.IsValid())
+						vehicleId = v.GetNetworkObjectId();
 				}
 
-				if (data.m_IsAttached && object && object->m_ObjectType == (uint16_t)NetObjType::Trailer)
+				const bool targetingUs = data.m_IsAttached && (data.m_AttachObjectId == localPedId || (mountId != -1 && data.m_AttachObjectId == mountId) || (vehicleId != -1 && data.m_AttachObjectId == vehicleId));
+
+				// attachment spam limiter
+				auto sp = Protections::GetSyncingPlayer();
+				if (sp && targetingUs)
+				{
+					if (sp.GetData().m_AttachRateLimit.Process() && sp.GetData().m_AttachRateLimit.ExceededLastProcess())
+					{
+						SyncBlocked("attachment spam");
+						sp.GetData().QuarantineFor(std::chrono::seconds(10));
+						if (object)
+							DeleteSyncObject(object->m_ObjectId);
+						return true;
+					}
+				}
+
+				if (targetingUs && Features::_BlockAttachments.GetState())
+				{
+					SyncBlocked("attachment", GetObjectCreator(object));
+					if (sp)
+						sp.AddDetection(Detection::TRIED_ATTACH);
+
+					if (object && object->m_ObjectType != (int)NetObjType::Player)
+					{
+						DeleteSyncObject(object->m_ObjectId);
+						return true;
+					}
+					else
+					{
+						// force detach by deleting our ped on the attacker's end
+						Network::ForceRemoveNetworkEntity(local->m_NetObject->m_ObjectId, -1, false, Protections::GetSyncingPlayer());
+						data.m_IsAttached = false;
+					}
+				}
+
+				// trailer-specific crash: block trailer attachments to any of our assets
+				if (data.m_IsAttached && object && object->m_ObjectType == (uint16_t)NetObjType::Trailer && targetingUs)
 				{
 					SyncBlocked("physical trailer attachment crash");
-					Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER);
+					if (sp)
+						sp.AddDetection(Detection::TRIED_CRASH_PLAYER);
 					return true;
 				}
 			}
@@ -416,32 +560,76 @@ namespace
 			auto& data = node->GetData<CPedAttachData>();
 			if (auto local = Pointers.GetLocalPed(); local && local->m_NetObject)
 			{
-				if (data.m_IsAttached && data.m_AttachObjectId == local->m_NetObject->m_ObjectId && Features::_BlockAttachments.GetState())
+				const int localPedId = local->m_NetObject->m_ObjectId;
+				int mountId = -1;
+				{
+					auto m = Self::GetMount();
+					if (m && m.IsValid())
+						mountId = m.GetNetworkObjectId();
+				}
+				int vehicleId = -1;
+				{
+					auto v = Self::GetVehicle();
+					if (v && v.IsValid())
+						vehicleId = v.GetNetworkObjectId();
+				}
+
+				const bool targetingUs = data.m_IsAttached && (data.m_AttachObjectId == localPedId || (mountId != -1 && data.m_AttachObjectId == mountId) || (vehicleId != -1 && data.m_AttachObjectId == vehicleId));
+
+				// attachment spam limiter
+				auto sp = Protections::GetSyncingPlayer();
+				if (sp && targetingUs)
+				{
+					if (sp.GetData().m_AttachRateLimit.Process() && sp.GetData().m_AttachRateLimit.ExceededLastProcess())
+					{
+						SyncBlocked("attachment spam");
+						sp.GetData().QuarantineFor(std::chrono::seconds(10));
+						if (object)
+							DeleteSyncObject(object->m_ObjectId);
+						return true;
+					}
+				}
+
+				if (targetingUs && Features::_BlockAttachments.GetState())
 				{
 					SyncBlocked("ped attachment");
-					Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_ATTACH);
-					if (object->m_ObjectType != (int)NetObjType::Player)
+					if (sp)
+						sp.AddDetection(Detection::TRIED_ATTACH);
+
+					if (object && object->m_ObjectType != (int)NetObjType::Player)
 					{
-						LOGF(SYNC, WARNING, "Deleting ped object {} attached to our ped", object->m_ObjectId);
+						LOGF(SYNC, WARNING, "Deleting ped object {} attached to our entity", object->m_ObjectId);
 						DeleteSyncObject(object->m_ObjectId);
 						return true;
 					}
 					else
 					{
-						LOGF(SYNC, WARNING, "Player {} has attached themselves to us. Pretending to delete our ped to force detach ourselves on their end", Protections::GetSyncingPlayer().GetName());
+						LOGF(SYNC, WARNING, "Player {} has attached themselves to us/our asset. Pretending to delete our ped to force detach on their end", Protections::GetSyncingPlayer().GetName());
 						// delete us on their end
-						Network::ForceRemoveNetworkEntity(Self::GetPed().GetNetworkObjectId(), -1, false, Protections::GetSyncingPlayer());
+						Network::ForceRemoveNetworkEntity(local->m_NetObject->m_ObjectId, -1, false, Protections::GetSyncingPlayer());
 						data.m_IsAttached = false;
 					}
 				}
 
-				// TODO: the check looks off
-				if (data.m_IsAttached && object && object->m_ObjectType == (uint16_t)NetObjType::Trailer)
+				// trailer-specific crash: block trailer attachments targeting our assets
+				if (data.m_IsAttached && object && object->m_ObjectType == (uint16_t)NetObjType::Trailer && targetingUs)
 				{
 					SyncBlocked("ped trailer attachment crash");
-					Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER);
+					if (sp)
+						sp.AddDetection(Detection::TRIED_CRASH_PLAYER);
 					return true;
 				}
+			}
+			break;
+		}
+		case "CProjectileAttachNode"_J:
+		{
+			// conservative guard: delete projectile if an attach node tries to bind it (common crash vector)
+			if (object && object->m_ObjectType == (uint16_t)NetObjType::WorldProjectile)
+			{
+				SyncBlocked("projectile attachment");
+				DeleteSyncObject(object->m_ObjectId);
+				return true;
 			}
 			break;
 		}
@@ -454,6 +642,18 @@ namespace
 				SyncBlocked("invalid propset crash");
 				Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER);
 				return true;
+			}
+
+			// propset flood control
+			if (auto p = Protections::GetSyncingPlayer())
+			{
+				if (p.GetData().m_PropSetFloodLimit.Process() && p.GetData().m_PropSetFloodLimit.ExceededLastProcess())
+				{
+					SyncBlocked("propset flood");
+					if (object)
+						DeleteSyncObject(object->m_ObjectId);
+					return true;
+				}
 			}
 			break;
 		}
@@ -555,12 +755,39 @@ namespace
 		case "Node_14359d660"_J:
 		{
 			auto data = (std::uint64_t)&node->GetData<char>();
-			for (int i = 0; i < *(int*)(data + 36); i++)
+
+			// validate base fields are readable first
+			if (!IsReadable((void*)(data + 36), sizeof(int)))
 			{
-				if (*(int*)(data + 36ULL * i + 72ULL) < *(int*)(data + 36ULL * i + 64ULL))
+				SyncBlocked("wanted data node unreadable header");
+				if (object) DeleteSyncObjectLater(object->m_ObjectId);
+				return true;
+			}
+
+			int count = *(int*)(data + 36);
+			// basic sanity
+			if (count < 0 || count > 16)
+			{
+				SyncBlocked("wanted data count out of bounds");
+				if (object) DeleteSyncObjectLater(object->m_ObjectId);
+				return true;
+			}
+
+			for (int i = 0; i < count; i++)
+			{
+				// ensure we can read both bounds before comparing
+				auto hiPtr = (void*)(data + 36ULL * i + 72ULL);
+				auto loPtr = (void*)(data + 36ULL * i + 64ULL);
+				if (!IsReadable(hiPtr, sizeof(int)) || !IsReadable(loPtr, sizeof(int)))
 				{
-					LOGF(SYNC, WARNING, "Blocking wanted data array out of bounds range ({} < {}) from {}", *(int*)(data + 36ULL * i + 72ULL), *(int*)(data + 36ULL * i + 64ULL), Protections::GetSyncingPlayer().GetName());
-					// trigger quarantine immediately to suppress any follow-up traffic from the attacker
+					SyncBlocked("wanted data element unreadable");
+					if (object) DeleteSyncObjectLater(object->m_ObjectId);
+					return true;
+				}
+
+				if (*(int*)hiPtr < *(int*)loPtr)
+				{
+					LOGF(SYNC, WARNING, "Blocking wanted data array out of bounds range ({} < {}) from {}", *(int*)hiPtr, *(int*)loPtr, Protections::GetSyncingPlayer().GetName());
 					SyncBlocked("wanted data array out of bounds crash");
 					Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER);
 					return true;
@@ -571,11 +798,38 @@ namespace
 		case "CTrainGameStateUncommonNode"_J:
 		{
 			auto data = (std::uint64_t)&node->GetData<char>();
+			if (!IsReadable((void*)(data + 12), sizeof(unsigned char)))
+			{
+				SyncBlocked("train uncommon unreadable config index");
+				if (object) DeleteSyncObjectLater(object->m_ObjectId);
+				return true;
+			}
 			if (*(unsigned char*)(data + 12) >= Pointers.TrainConfigs->m_TrainConfigs.size())
 			{
 				LOGF(SYNC, WARNING, "Blocking CTrainGameStateUncommonNode out of bounds train config ({} >= {}) from {}", *(unsigned char*)(data + 12), Pointers.TrainConfigs->m_TrainConfigs.size(), Protections::GetSyncingPlayer().GetName());
 				SyncBlocked("out of bounds train config index crash");
 				DeleteSyncObjectLater(object->m_ObjectId); // delete bad train just in case
+				return true;
+			}
+			break;
+		}
+		case "CTrainGameStateNode"_J:
+		{
+			auto data = (std::uint64_t)&node->GetData<char>();
+			// validate readable before deref
+			if (!IsReadable((void*)(data + 30), sizeof(unsigned char)))
+			{
+				SyncBlocked("train state unreadable track index");
+				if (object) DeleteSyncObjectLater(object->m_ObjectId);
+				return true;
+			}
+			unsigned char trackIdx = *(unsigned char*)(data + 30);
+			if (trackIdx > 120)
+			{
+				LOGF(SYNC, WARNING, "Blocking CTrainGameStateNode invalid track index ({}) from {}", trackIdx, Protections::GetSyncingPlayer().GetName());
+				SyncBlocked("invalid train state");
+				if (object)
+					DeleteSyncObjectLater(object->m_ObjectId);
 				return true;
 			}
 			break;
@@ -597,6 +851,26 @@ namespace
 		return false;
 	}
 
+	// bridge + seh wrapper with no c++ object construction inside guarded region
+	static bool ShouldBlockNode_Raw(CProjectBaseSyncDataNode* node, NetObjType type, rage::netObject* object)
+	{
+		return ShouldBlockNode(node, Nodes::Find((uint64_t)node), type, object);
+	}
+
+	using ShouldBlockNodeRawFn = bool (*)(CProjectBaseSyncDataNode*, NetObjType, rage::netObject*);
+	static bool __declspec(noinline) CallNodeEval_SEH(ShouldBlockNodeRawFn fn, CProjectBaseSyncDataNode* node, NetObjType type, rage::netObject* object, bool* outSeh)
+	{
+		__try
+		{
+			return fn(node, type, object);
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER)
+		{
+			if (outSeh) *outSeh = true;
+			return true; // block to prevent crash
+		}
+	}
+
 	bool SyncNodeVisitor(CProjectBaseSyncDataNode* node, NetObjType type, rage::netObject* object)
 	{
 		if (node->IsParentNode())
@@ -612,9 +886,27 @@ namespace
 			if (!node->IsActive())
 				return false;
 
+			auto sid = Nodes::Find((uint64_t)node);
 			if (YimMenu::Features::_LogClones.GetState())
-				YimMenu::Hooks::Protections::LogSyncNode(node, Nodes::Find((uint64_t)node), type, object, Protections::GetSyncingPlayer());
-			return ShouldBlockNode(node, Nodes::Find((uint64_t)node), type, object);
+				YimMenu::Hooks::Protections::LogSyncNode(node, sid, type, object, Protections::GetSyncingPlayer());
+			{
+				bool seh = false;
+				bool blocked = CallNodeEval_SEH(&ShouldBlockNode_Raw, node, type, object, &seh);
+				if (seh)
+				{
+					auto p = ::YimMenu::Protections::GetSyncingPlayer();
+					LOGF(SYNC, WARNING, "SEH in ShouldBlockNode for {} from {}", sid.name ? sid.name : "unknown_node", p ? p.GetName() : "unknown");
+					if (p)
+					{
+						p.AddDetection(Detection::TRIED_CRASH_PLAYER);
+						p.GetData().QuarantineFor(std::chrono::seconds(10));
+					}
+					if (object)
+						DeleteSyncObjectLater(object->m_ObjectId);
+					return true;
+				}
+				return blocked;
+			}
 		}
 
 		return false;
@@ -627,6 +919,15 @@ namespace YimMenu::Hooks::Protections
 	{
 		try
 		{
+			// early quarantine gate
+			{
+				auto qp = ::YimMenu::Protections::GetSyncingPlayer();
+				if (qp && qp.GetData().IsSyncsBlocked())
+				{
+					return true;
+				}
+			}
+
 			Nodes::Init();
 
 			if (g_Running && SyncNodeVisitor(reinterpret_cast<CProjectBaseSyncDataNode*>(tree->m_NextSyncNode), type, object))
@@ -639,7 +940,12 @@ namespace YimMenu::Hooks::Protections
 		catch (const std::exception& e)
 		{
 			LOGF(SYNC, WARNING, "Exception in ShouldBlockSync: {} from {}", e.what(), ::YimMenu::Protections::GetSyncingPlayer().GetName());
-			::YimMenu::Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER);
+			auto p = ::YimMenu::Protections::GetSyncingPlayer();
+			if (p)
+			{
+				p.AddDetection(Detection::TRIED_CRASH_PLAYER);
+				p.GetData().QuarantineFor(std::chrono::seconds(10));
+			}
 			return true; // Block on exception to prevent crash
 		}
 		catch (...)

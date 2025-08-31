@@ -20,6 +20,9 @@ namespace YimMenu
 		bool m_GhostMode{};
 
 		RateLimiter m_VehicleFloodLimit{10s, 10};
+		RateLimiter m_PedFloodLimit{10s, 25};
+		RateLimiter m_ObjectFloodLimit{10s, 30};
+		RateLimiter m_PropSetFloodLimit{10s, 15};
 		// temporary quarantine end time to block all net traffic from this player
 		std::optional<std::chrono::steady_clock::time_point> m_BlockSyncsUntil{};
 
@@ -37,6 +40,12 @@ namespace YimMenu
 
 		RateLimiter m_LargeVehicleFloodLimit{15s, 5};
 		RateLimiter m_TickerMessageRateLimit{5s, 3};
+
+		// rate limiters for suspicious events
+		RateLimiter m_WeaponDamageRateLimit{2s, 6};
+		RateLimiter m_TrainEventRateLimit{10s, 3};
+		RateLimiter m_AttachRateLimit{2s, 4};
+
 
 		std::optional<std::uint64_t> m_PeerIdToSpoofTo{};
 	};

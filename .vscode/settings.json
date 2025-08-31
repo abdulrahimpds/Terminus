@@ -95,5 +95,14 @@
         "stack": "cpp"
     },
     "C_Cpp.default.configurationProvider": "maxmitti.cmake-tools-fork",
-    "C_Cpp.errorSquiggles": "disabled"
+    "C_Cpp.errorSquiggles": "disabled",
+    "[cpp]": {
+        "editor.wordBasedSuggestions": "off",
+        "editor.semanticHighlighting.enabled": true,
+        "editor.stickyScroll.defaultModel": "foldingProviderModel",
+        "editor.suggest.insertMode": "replace",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "never"
+        }
+    }
 }

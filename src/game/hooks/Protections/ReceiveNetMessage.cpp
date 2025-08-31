@@ -44,7 +44,16 @@ namespace YimMenu::Hooks
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER)
 		{
-			return false; // drop the malformed frame safely
+			// quarantine sender to suppress follow-up malformed traffic
+			if (frame && frame->m_MsgId != -1)
+			{
+				auto qp = Players::GetByMessageId(frame->m_MsgId);
+				if (qp)
+				{
+					qp.GetData().QuarantineFor(std::chrono::seconds(10));
+				}
+			}
+			return true; // consume malformed frame safely
 		}
 	}
 	static bool GetMessageType(NetMessageType& type, rage::datBitBuffer& buffer)
@@ -190,7 +199,22 @@ namespace YimMenu::Hooks
 
 		if (!GetMessageType(msg_type, buffer))
 		{
-			return CallOrig_SEH(orig, a1, ncm, frame);
+			// invalid net message (NT crash vector). quarantine and drop.
+			if (auto qp = Players::GetByMessageId(frame->m_MsgId))
+			{
+				qp.GetData().QuarantineFor(std::chrono::seconds(10));
+			}
+			return true; // drop invalid
+		}
+
+		// additional sanity: message id must be in reasonable range
+		if ((int)msg_type == (int)NetMessageType::INVALID || (int)msg_type > 0xFF)
+		{
+			if (auto qp = Players::GetByMessageId(frame->m_MsgId))
+			{
+				qp.GetData().QuarantineFor(std::chrono::seconds(10));
+			}
+			return true;
 		}
 
 		if (Features::_LogPackets.GetState())
@@ -289,6 +313,17 @@ namespace YimMenu::Hooks
 						return true;
 					}
 				}
+			}
+			break;
+		}
+		case NetMessageType::READY_FOR_GAME_SYNC_ACK:
+		{
+			// NT crash mitigation: valid ACK is exactly 3 bytes; drop anything else
+			if (frame->m_Length != 3)
+			{
+				if (Features::_LogPackets.GetState())
+					LOGF(VERBOSE, "Dropped READY_FOR_GAME_SYNC_ACK with unexpected size {}", frame->m_Length);
+				return true; // drop malformed ACK (prevents NT crash)
 			}
 			break;
 		}

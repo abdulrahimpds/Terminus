@@ -11,6 +11,8 @@
 #include <network/netObject.hpp>
 #include <network/rlGamerInfo.hpp>
 #include <rage/datBitBuffer.hpp>
+#include <excpt.h>
+
 #include <unordered_set>
 
 
@@ -36,6 +38,32 @@ namespace YimMenu::Features
 	BoolCommand _LogEvents("logevents", "Log Network Events", "Log network events");
 	BoolCommand _BlockExplosions("blockexplosions", "Block Explosions", "Blocks all explosion events", false);
 	BoolCommand _BlockPtfx("blockptfx", "Block PTFX", "Blocks all particle effect events", true);
+
+		// seh wrapper like ReceiveNetMessage: no c++ objects in guarded region
+		using HandleEventFn = void (*)(rage::netEventMgr*, CNetGamePlayer*, CNetGamePlayer*, NetEventType, int, int, std::int16_t, rage::datBitBuffer*);
+		static void __declspec(noinline) CallEvent_SEH(HandleEventFn fn,
+		    rage::netEventMgr* eventMgr,
+		    CNetGamePlayer* sourcePlayer,
+		    CNetGamePlayer* targetPlayer,
+		    NetEventType type,
+		    int index,
+		    int handledBits,
+		    std::int16_t unk,
+		    rage::datBitBuffer* buffer)
+		{
+			__try
+			{
+				fn(eventMgr, sourcePlayer, targetPlayer, type, index, handledBits, unk, buffer);
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER)
+			{
+				if (sourcePlayer)
+				{
+					Player(sourcePlayer).GetData().QuarantineFor(std::chrono::seconds(10));
+				}
+			}
+		}
+
 	BoolCommand _BlockClearTasks("blockclearpedtasks", "Block Clear Tasks", "Blocks all clear ped tasks events", true);
 	BoolCommand _BlockScriptCommand("blockscriptcommand", "Block Remote Native Calls", "Blocks all remote native call events", true);
 }
@@ -97,6 +125,17 @@ namespace YimMenu::Hooks
 	{
 		rage::datBitBuffer new_buffer = *buffer;
 
+		// quarantine gate: drop all net events from quarantined senders
+		if (sourcePlayer)
+		{
+			auto p = Player(sourcePlayer);
+			if (p.GetData().IsSyncsBlocked())
+			{
+				Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
+				return;
+			}
+		}
+
 		if (Features::_LogEvents.GetState() && (int)type < g_NetEventsToString.size())
 		{
 			LOG(INFO) << "NETWORK_EVENT: " << g_NetEventsToString[(int)type] << " from " << sourcePlayer->GetName();
@@ -116,6 +155,56 @@ namespace YimMenu::Hooks
 				}
 			}
 		}
+
+			// weapon damage crash/spam protection
+			if (type == NetEventType::WEAPON_DAMAGE_EVENT && sourcePlayer)
+			{
+				auto p = Player(sourcePlayer);
+				// rate-limit damage events per attacker; drop and quarantine on spam
+				if (p.GetData().m_WeaponDamageRateLimit.Process())
+				{
+					if (p.GetData().m_WeaponDamageRateLimit.ExceededLastProcess())
+					{
+						LOGF(NET_EVENT, WARNING, "Blocked weapon damage spam from {}", sourcePlayer->GetName());
+						p.GetData().QuarantineFor(std::chrono::seconds(10));
+						Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
+						return;
+					}
+				}
+			}
+
+			// sunrise variant: sometimes routes damage through different net events; apply same rate-limiting
+			if ((type == NetEventType::FIRE_EVENT || type == NetEventType::FIRE_TRAIL_UPDATE_EVENT || type == NetEventType::PED_PLAY_PAIN_EVENT) && sourcePlayer)
+			{
+				auto p = Player(sourcePlayer);
+				if (p.GetData().m_WeaponDamageRateLimit.Process())
+				{
+					if (p.GetData().m_WeaponDamageRateLimit.ExceededLastProcess())
+					{
+						LOGF(NET_EVENT, WARNING, "Blocked damage-adjacent spam (type {}) from {}", (int)type, sourcePlayer->GetName());
+						p.GetData().QuarantineFor(std::chrono::seconds(10));
+						Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
+						return;
+					}
+				}
+			}
+
+			// train crash protection: spam + invalid
+			if (type == NetEventType::NETWORK_TRAIN_REQUEST_EVENT && sourcePlayer)
+			{
+				auto p = Player(sourcePlayer);
+				if (p.GetData().m_TrainEventRateLimit.Process())
+				{
+					if (p.GetData().m_TrainEventRateLimit.ExceededLastProcess())
+					{
+						LOGF(NET_EVENT, WARNING, "Blocked train request spam from {}", sourcePlayer->GetName());
+						p.GetData().QuarantineFor(std::chrono::seconds(10));
+						Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
+						return;
+					}
+				}
+			}
+
 
 		if (type == NetEventType::EXPLOSION_EVENT && sourcePlayer)
 		{
@@ -157,6 +246,8 @@ namespace YimMenu::Hooks
 			YimMenu::Protections::SetSyncingPlayer(sourcePlayer);
 		}
 
-		BaseHook::Get<Protections::HandleNetGameEvent, DetourHook<decltype(&Protections::HandleNetGameEvent)>>()->Original()(eventMgr, sourcePlayer, targetPlayer, type, index, handledBits, unk, buffer);
+		// wrap original call in SEH to avoid crash on malformed payloads
+		YimMenu::Features::CallEvent_SEH(BaseHook::Get<Protections::HandleNetGameEvent, DetourHook<decltype(&Protections::HandleNetGameEvent)>>()->Original(), eventMgr, sourcePlayer, targetPlayer, type, index, handledBits, unk, buffer);
+		return;
 	}
 }
