@@ -300,46 +300,46 @@ namespace
 				return false;
 		}
 
-		bool hasSequence = false;
-
 		for (int i = 0; i < data.GetNumTaskTrees(); ++i)
 		{
 			const auto& tree = data.m_Trees[i];
-			if (tree.m_NumTasks != 4)
+			if (tree.m_NumTasks < 3)
 				continue;
 
-			const int types[4]     = {142, 502, 503, 138};
-			const int ttree[4]     = {0, 1, 2, 3};
-			const uint32_t seq[4]  = {0xFFFFFFFFu, 0u, 1u, 2u};
+			const auto& t0 = tree.m_Tasks[0];
+			const auto& t1 = tree.m_Tasks[1];
+			const auto& t2 = tree.m_Tasks[2];
 
-			bool match = true;
-			for (int j = 0; j < 4; ++j)
+			const bool base_ok =
+			    t0.m_TaskType == 142 && t1.m_TaskType == 502 &&
+			    t0.m_TaskUnk1 == 1 && t1.m_TaskUnk1 == 1 && t2.m_TaskUnk1 == 1 &&
+			    t0.m_TaskTreeType == 0 && t1.m_TaskTreeType == 1 && t2.m_TaskTreeType == 2 &&
+			    t0.m_TaskSequenceId == 0xFFFFFFFFu && t1.m_TaskSequenceId == 0u && t2.m_TaskSequenceId == 1u &&
+			    t0.m_TaskTreeDepth == 0 && t1.m_TaskTreeDepth == 0 && t2.m_TaskTreeDepth == 0;
+
+			if (!base_ok)
+				continue;
+
+			// 3-step variant observed in original logs: 142 -> 502 -> 265 (also allow 503/138 variants)
+			if (t2.m_TaskType == 265 || t2.m_TaskType == 503 || t2.m_TaskType == 138)
+				return true;
+
+			// legacy 4-step: 142 -> 502 -> 503 -> 138
+			if (tree.m_NumTasks >= 4)
 			{
-				const auto& t = tree.m_Tasks[j];
-				if (t.m_TaskType != types[j] ||
-				    t.m_TaskUnk1 != 1 ||
-				    t.m_TaskTreeType != ttree[j] ||
-				    t.m_TaskSequenceId != seq[j] ||
-				    t.m_TaskTreeDepth != 0)
+				const auto& t3 = tree.m_Tasks[3];
+				if (t2.m_TaskType == 503 &&
+				    t3.m_TaskType == 138 &&
+				    t3.m_TaskUnk1 == 1 &&
+				    t3.m_TaskTreeType == 3 &&
+				    t3.m_TaskSequenceId == 2u &&
+				    t3.m_TaskTreeDepth == 0)
 				{
-					match = false;
-					break;
+					return true;
 				}
 			}
-			if (match)
-			{
-				hasSequence = true;
-				break;
-			}
 		}
-
-		if (!hasSequence)
-			return false;
-
-		// optional booster: presence of a single 322 task with unk1==255 (observed), not required to fire
-		// keeping detection narrow to avoid false positives
-
-		return true;
+		return false;
 	}
 
 	bool ShouldBlockNode(CProjectBaseSyncDataNode* node, SyncNodeId id, NetObjType type, rage::netObject* object)
@@ -595,7 +595,27 @@ namespace
 
 			for (int i = 0; i < data.GetNumTaskTrees(); i++)
 			{
-				for (int j = 0; j < data.m_Trees[i].m_NumTasks; j++)
+				const int num = data.m_Trees[i].m_NumTasks;
+				if (num > 16)
+				{
+					LOGF(SYNC, WARNING, "Blocking task tree with excessive task count ({} > 16) from {}", num, Protections::GetSyncingPlayer().GetName());
+					SyncBlocked("task fuzzer count");
+					if (object) DeleteSyncObjectLater(object->m_ObjectId);
+					return true;
+				}
+
+				const int maxRead = std::min(num, 16);
+				if (maxRead > 0)
+				{
+					if (!IsReadable(&data.m_Trees[i].m_Tasks[0], size_t(maxRead) * sizeof(data.m_Trees[i].m_Tasks[0])))
+					{
+						SyncBlocked("task array unreadable");
+						if (object) DeleteSyncObjectLater(object->m_ObjectId);
+						return true;
+					}
+				}
+
+				for (int j = 0; j < maxRead; j++)
 				{
 					if (data.m_Trees[i].m_Tasks[j].m_TaskType == -1)
 					{
