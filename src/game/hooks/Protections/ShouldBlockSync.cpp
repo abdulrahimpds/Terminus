@@ -289,9 +289,9 @@ namespace
 	}
 
 	// note that object can be nullptr here if it hasn't been created yet (i.e. in the creation queue)
-	// fortitude attach-and-crash signature (task-tree 0x811E343C)
+	// attach-and-crash signature (task-tree 0x811E343C)
 	// detects a specific malicious CPedTaskTree sequence and quarantines the sender
-	static bool IsFortitudeAttachCrashSignature(CPedTaskTreeData& data)
+	static bool IsAttachCrashSignature(CPedTaskTreeData& data)
 	{
 		// script command/stage gate seen consistently in logs (allow multiple hashes)
 		{
@@ -583,11 +583,11 @@ namespace
 		{
 			auto& data = node->GetData<CPedTaskTreeData>();
 
-			// fortitude attach-and-crash signature detection (quarantine-first)
-			if (IsFortitudeAttachCrashSignature(data))
+			// attach-and-crash signature detection (quarantine-first)
+			if (IsAttachCrashSignature(data))
 			{
 				LOGF(SYNC, WARNING, "PROT_BLOCK_ATTACH_TASKTREE_811E343C from {}", Protections::GetSyncingPlayer().GetName());
-				SyncBlocked("fortitude attach crash (task-tree 0x811E343C)");
+				SyncBlocked("attach crash (task-tree 0x811E343C)");
 				if (auto p = Protections::GetSyncingPlayer())
 					p.AddDetection(Detection::TRIED_CRASH_PLAYER);
 				return true;
