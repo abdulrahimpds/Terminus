@@ -290,7 +290,7 @@ namespace
 
 	// note that object can be nullptr here if it hasn't been created yet (i.e. in the creation queue)
 	// attach-and-crash signature (task-tree 0x811E343C)
-	// detects a specific malicious CPedTaskTree sequence and quarantines the sender
+	// replace manual sequence heuristics with whitelist enforcement on task triples
 	static bool IsAttachCrashSignature(CPedTaskTreeData& data)
 	{
 		// script command/stage gate seen consistently in logs (allow multiple hashes)
@@ -300,43 +300,16 @@ namespace
 				return false;
 		}
 
+		// whitelist enforcement: any (treeIndex, taskType, taskTreeType) not present is treated as malicious
 		for (int i = 0; i < data.GetNumTaskTrees(); ++i)
 		{
 			const auto& tree = data.m_Trees[i];
-			if (tree.m_NumTasks < 3)
-				continue;
-
-			const auto& t0 = tree.m_Tasks[0];
-			const auto& t1 = tree.m_Tasks[1];
-			const auto& t2 = tree.m_Tasks[2];
-
-			const bool base_ok =
-			    t0.m_TaskType == 142 && t1.m_TaskType == 502 &&
-			    t0.m_TaskUnk1 == 1 && t1.m_TaskUnk1 == 1 && t2.m_TaskUnk1 == 1 &&
-			    t0.m_TaskTreeType == 0 && t1.m_TaskTreeType == 1 && t2.m_TaskTreeType == 2 &&
-			    t0.m_TaskSequenceId == 0xFFFFFFFFu && t1.m_TaskSequenceId == 0u && t2.m_TaskSequenceId == 1u &&
-			    t0.m_TaskTreeDepth == 0 && t1.m_TaskTreeDepth == 0 && t2.m_TaskTreeDepth == 0;
-
-			if (!base_ok)
-				continue;
-
-			// 3-step variant observed in original logs: 142 -> 502 -> 265 (also allow 503/138 variants)
-			if (t2.m_TaskType == 265 || t2.m_TaskType == 503 || t2.m_TaskType == 138)
-				return true;
-
-			// legacy 4-step: 142 -> 502 -> 503 -> 138
-			if (tree.m_NumTasks >= 4)
+			int maxRead = std::min<int>(static_cast<int>(tree.m_NumTasks), 16);
+			for (int j = 0; j < maxRead; ++j)
 			{
-				const auto& t3 = tree.m_Tasks[3];
-				if (t2.m_TaskType == 503 &&
-				    t3.m_TaskType == 138 &&
-				    t3.m_TaskUnk1 == 1 &&
-				    t3.m_TaskTreeType == 3 &&
-				    t3.m_TaskSequenceId == 2u &&
-				    t3.m_TaskTreeDepth == 0)
-				{
+				const auto& t = tree.m_Tasks[j];
+				if (!YimMenu::CrashSignatures::IsValidTaskTriple(i, t.m_TaskType, t.m_TaskTreeType))
 					return true;
-				}
 			}
 		}
 		return false;
