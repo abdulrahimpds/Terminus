@@ -427,7 +427,7 @@ namespace YimMenu::CrashSignatures
 	// The vector 'validTasks' is your existing list of {treeIndex, taskIndex, taskType, taskTreeType}
 	static std::unordered_set<std::uint64_t> g_ValidTaskTriples;
 	static std::once_flag g_TripleInitFlag;
-	static std::set<std::tuple<int, int, int, int>> g_SeenTasks; // Your collected 1,435 4-tuples
+	static std::set<std::tuple<int, int, int, int>> g_SeenTasks;
 
 	// Fix pre-population bug by moving static to file scope
 	static bool g_TasksPrePopulated = false;
@@ -437,7 +437,7 @@ namespace YimMenu::CrashSignatures
 	{
 		if (g_TasksPrePopulated) return;
 
-		// Your collected dataset: 1,435 valid task combinations from clean sessions
+		// treeIndex, taskIndex, taskType, taskTreeType
 		static const std::vector<std::tuple<int,int,int,int>> validTasks = {
 			{0, 0, 32, 0}, {0, 0, 150, 0}, {0, 0, 150, 1}, {0, 0, 150, 5}, {0, 0, 152, 0},
 			{0, 0, 154, 1}, {0, 0, 154, 5}, {0, 0, 154, 6}, {0, 0, 168, 0}, {0, 0, 168, 1},
@@ -810,7 +810,6 @@ namespace YimMenu::CrashSignatures
 	}
 
 	// REMOVED LEARNING MODE - Pure production whitelist validation
-	// "you retain the usefulness of your 3‑day dataset while eliminating the brittleness"
 	inline bool IsValidTaskTreeData(int treeIndex, int taskIndex, int taskType, int taskTreeType)
 	{
 		// Use only semantic fields, ignore unstable array positions
