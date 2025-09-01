@@ -290,30 +290,26 @@ namespace
 	}
 
 	// note that object can be nullptr here if it hasn't been created yet (i.e. in the creation queue)
-	// task-tree whitelist enforcement (global)
+	// hybrid suspicious/confirm logic
 	static bool IsAttachCrashSignature(CPedTaskTreeData& data)
 	{
-		// enforce whitelist globally: if any (treeIndex, taskType, taskTreeType) is not present, treat as malicious
-		// script command/stage gate seen consistently in logs (allow multiple hashes)
+		// stage-gate to minimize noise
 		{
 			auto cmd = data.m_ScriptCommand;
 			if (!((cmd == 0x811E343Cu || cmd == 0x82508255u) && data.m_ScriptTaskStage == 3))
 				return false;
 		}
 
+		bool whitelist_violation = false;
 		for (int i = 0; i < data.GetNumTaskTrees(); ++i)
 		{
 			const auto& tree = data.m_Trees[i];
 			int maxRead = std::min<int>(static_cast<int>(tree.m_NumTasks), 16);
 
-			// validate readable before deref to avoid AV on malformed nodes
-			if (maxRead > 0)
+			if (maxRead > 0 && !IsReadable(&tree.m_Tasks[0], size_t(maxRead) * sizeof(tree.m_Tasks[0])))
 			{
-				if (!IsReadable(&tree.m_Tasks[0], size_t(maxRead) * sizeof(tree.m_Tasks[0])))
-				{
-					LOGF(SYNC, WARNING, "Task array unreadable in whitelist check (tree={}) from {}", i, Protections::GetSyncingPlayer().GetName());
-					return true;
-				}
+				LOGF(SYNC, WARNING, "Task array unreadable in whitelist check (tree={}) from {}", i, Protections::GetSyncingPlayer().GetName());
+				return true; // definitely malicious
 			}
 
 			for (int j = 0; j < maxRead; ++j)
@@ -321,9 +317,45 @@ namespace
 				const auto& t = tree.m_Tasks[j];
 				if (!YimMenu::CrashSignatures::IsValidTaskTriple(i, t.m_TaskType, t.m_TaskTreeType))
 				{
-					LOGF(SYNC, WARNING, "PROT_BLOCK_TASKTREE_WHITELIST triple not allowed (tree={}, type={}, treetype={}) from {}", i, t.m_TaskType, t.m_TaskTreeType, Protections::GetSyncingPlayer().GetName());
-					return true;
+					whitelist_violation = true;
+					break;
 				}
+			}
+			if (whitelist_violation) break;
+		}
+
+		if (!whitelist_violation)
+			return false;
+
+		// confirm the attach crash signature only if suspicious
+		for (int i = 0; i < data.GetNumTaskTrees(); ++i)
+		{
+			const auto& tree = data.m_Trees[i];
+			if (tree.m_NumTasks < 3)
+				continue;
+
+			const auto& t0 = tree.m_Tasks[0];
+			const auto& t1 = tree.m_Tasks[1];
+			const auto& t2 = tree.m_Tasks[2];
+
+			const bool base_ok =
+			    t0.m_TaskType == 142 && t1.m_TaskType == 502 &&
+			    t0.m_TaskUnk1 == 1 && t1.m_TaskUnk1 == 1 && t2.m_TaskUnk1 == 1 &&
+			    t0.m_TaskTreeType == 0 && t1.m_TaskTreeType == 1 && t2.m_TaskTreeType == 2 &&
+			    t0.m_TaskSequenceId == 0xFFFFFFFFu && t1.m_TaskSequenceId == 0u && t2.m_TaskSequenceId == 1u &&
+			    t0.m_TaskTreeDepth == 0 && t1.m_TaskTreeDepth == 0 && t2.m_TaskTreeDepth == 0;
+
+			if (!base_ok)
+				continue;
+
+			if (t2.m_TaskType == 265 || t2.m_TaskType == 503 || t2.m_TaskType == 138)
+				return true;
+
+			if (tree.m_NumTasks >= 4)
+			{
+				const auto& t3 = tree.m_Tasks[3];
+				if (t2.m_TaskType == 503 && t3.m_TaskType == 138 && t3.m_TaskUnk1 == 1 && t3.m_TaskTreeType == 3 && t3.m_TaskSequenceId == 2u && t3.m_TaskTreeDepth == 0)
+					return true;
 			}
 		}
 		return false;
@@ -582,14 +614,36 @@ namespace
 		{
 			auto& data = node->GetData<CPedTaskTreeData>();
 
-			// attach-and-crash signature detection (quarantine-first)
+			// hybrid: treat whitelist-violation as suspicion; confirm signature before blocking
 			if (IsAttachCrashSignature(data))
 			{
-				LOGF(SYNC, WARNING, "PROT_BLOCK_TASKTREE_WHITELIST from {}", Protections::GetSyncingPlayer().GetName());
-				SyncBlocked("attach crash (task-tree 0x811E343C)");
-				if (auto p = Protections::GetSyncingPlayer())
-					//p.AddDetection(Detection::TRIED_CRASH_PLAYER);
-				return true;
+				auto p = Protections::GetSyncingPlayer();
+				if (p)
+				{
+					auto& d = p.GetData();
+					// bump suspicion and quarantine; if repeated quickly, escalate to block
+					auto now = std::chrono::steady_clock::now();
+					if (d.m_LastTaskTreeSuspicion.time_since_epoch().count() == 0 || (now - d.m_LastTaskTreeSuspicion) > std::chrono::seconds(30))
+					{
+						d.m_TaskTreeSuspicions = 0; // decay/reset after quiet period
+					}
+					d.m_LastTaskTreeSuspicion = now;
+					d.m_TaskTreeSuspicions++;
+					d.QuarantineFor(std::chrono::seconds(10));
+
+					// require either signature-confirmation OR enough rapid suspicions
+					// since IsAttachCrashSignature() already confirmed the shaped pattern, we escalate immediately on 2+ hits in 20-30s
+					if (d.m_TaskTreeSuspicions >= 2)
+					{
+						LOGF(SYNC, WARNING, "Blocking attach crash after repeated suspicious task trees from {}", p.GetName());
+						SyncBlocked("attach crash (task-tree gated)");
+						//p.AddDetection(Detection::TRIED_CRASH_PLAYER);
+						return true;
+					}
+				}
+
+				// first suspicious hit: quarantine only, do not block yet
+				return false;
 			}
 
 			for (int i = 0; i < data.GetNumTaskTrees(); i++)

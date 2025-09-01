@@ -38,6 +38,10 @@ namespace YimMenu
 			m_BlockSyncsUntil = std::chrono::steady_clock::now() + duration;
 		}
 
+		// suspicion tracking for task-tree anomalies
+		int m_TaskTreeSuspicions{};
+		std::chrono::steady_clock::time_point m_LastTaskTreeSuspicion{};
+
 		RateLimiter m_LargeVehicleFloodLimit{15s, 5};
 		RateLimiter m_TickerMessageRateLimit{5s, 3};
 
