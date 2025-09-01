@@ -182,6 +182,14 @@ namespace YimMenu::Hooks
 				{
 					return true;
 				}
+				// also check resolved player directly in case messageId lookup fails
+				{
+					YimMenu::Player p(player->m_NetGamePlayer);
+					if (p && p.GetData().IsSyncsBlocked())
+					{
+						return true;
+					}
+				}
 			}
 
 
