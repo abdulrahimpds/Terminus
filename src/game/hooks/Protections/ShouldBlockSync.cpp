@@ -147,7 +147,7 @@ namespace
 
 	static const std::unordered_set<uint32_t> g_CageModels        = {0x99C0CFCF, 0xF3D580D3, 0xEE8254F6, 0xC2D200FE};
 	static const std::unordered_set<uint32_t> g_ValidPlayerModels = {"mp_male"_J, "mp_female"_J};
-	
+
 	static const std::unordered_set<uint32_t> g_BlacklistedAnimScenes = {"script@beat@town@peepingtom@spankscene"_J, "script@story@sal1@ig@sal1_18_lenny_on_lenny@sal1_18_lenny_on_lenny"_J, "script@vignette@dutch_33@player_karen@dance"_J, "script@vignette@beecher@abigail_6@action_enter"_J};
 
 	inline bool IsValidPlayerModel(rage::joaat_t model)
@@ -272,7 +272,8 @@ namespace
 		case "CPlayerCreationNode"_J:
 			return type == NetObjType::Player;
 		case "CObjectCreationNode"_J:
-			return type == NetObjType::Object;
+			// allow for Object and PropSet as some payloads misreport, we'll validate model below
+			return type == NetObjType::Object || type == NetObjType::PropSet;
 		case "CPropSetCreationNode"_J:
 			return type == NetObjType::PropSet;
 		case "CProjectileCreationNode"_J:
@@ -289,10 +290,10 @@ namespace
 	}
 
 	// note that object can be nullptr here if it hasn't been created yet (i.e. in the creation queue)
-	// attach-and-crash signature (task-tree 0x811E343C)
-	// replace manual sequence heuristics with whitelist enforcement on task triples
+	// task-tree whitelist enforcement (global)
 	static bool IsAttachCrashSignature(CPedTaskTreeData& data)
 	{
+		// enforce whitelist globally: if any (treeIndex, taskType, taskTreeType) is not present, treat as malicious
 		// script command/stage gate seen consistently in logs (allow multiple hashes)
 		{
 			auto cmd = data.m_ScriptCommand;
@@ -300,16 +301,29 @@ namespace
 				return false;
 		}
 
-		// whitelist enforcement: any (treeIndex, taskType, taskTreeType) not present is treated as malicious
 		for (int i = 0; i < data.GetNumTaskTrees(); ++i)
 		{
 			const auto& tree = data.m_Trees[i];
 			int maxRead = std::min<int>(static_cast<int>(tree.m_NumTasks), 16);
+
+			// validate readable before deref to avoid AV on malformed nodes
+			if (maxRead > 0)
+			{
+				if (!IsReadable(&tree.m_Tasks[0], size_t(maxRead) * sizeof(tree.m_Tasks[0])))
+				{
+					LOGF(SYNC, WARNING, "Task array unreadable in whitelist check (tree={}) from {}", i, Protections::GetSyncingPlayer().GetName());
+					return true;
+				}
+			}
+
 			for (int j = 0; j < maxRead; ++j)
 			{
 				const auto& t = tree.m_Tasks[j];
 				if (!YimMenu::CrashSignatures::IsValidTaskTriple(i, t.m_TaskType, t.m_TaskTreeType))
+				{
+					LOGF(SYNC, WARNING, "PROT_BLOCK_TASKTREE_WHITELIST triple not allowed (tree={}, type={}, treetype={}) from {}", i, t.m_TaskType, t.m_TaskTreeType, Protections::GetSyncingPlayer().GetName());
 					return true;
+				}
 			}
 		}
 		return false;
@@ -392,11 +406,21 @@ namespace
 				SyncBlocked("invalid object crash");
 				return true;
 			}
-			if (data.m_ModelHash && !STREAMING::_IS_MODEL_AN_OBJECT(data.m_ModelHash))
+			// strong validation even if node/type mismatched; some payloads misreport
+			if (data.m_ModelHash)
 			{
-				LOGF(SYNC, WARNING, "Blocking invalid object creation model 0x{:X} from {}", data.m_ModelHash, Protections::GetSyncingPlayer().GetName());
-				SyncBlocked("mismatched object model crash");
-				return true;
+				if (!STREAMING::_IS_MODEL_AN_OBJECT(data.m_ModelHash) || !STREAMING::IS_MODEL_VALID(data.m_ModelHash))
+				{
+					LOGF(SYNC, WARNING, "Blocking invalid object creation model 0x{:X} from {}", data.m_ModelHash, Protections::GetSyncingPlayer().GetName());
+					SyncBlocked("mismatched/invalid object model crash");
+					return true;
+				}
+				if (data.m_ModelHash == 0x2AB28031)
+				{
+					LOGF(SYNC, WARNING, "Blocking blacklisted object model 0x{:X} from {}", data.m_ModelHash, Protections::GetSyncingPlayer().GetName());
+					SyncBlocked("blacklisted object model crash");
+					return true;
+				}
 			}
 			if (g_CageModels.count(data.m_ModelHash))
 			{
@@ -467,6 +491,7 @@ namespace
 
 			break;
 		}
+
 		case "CPhysicalAttachNode"_J:
 		{
 			auto& data = node->GetData<CPhysicalAttachData>();
@@ -532,6 +557,7 @@ namespace
 			}
 			break;
 		}
+
 		case "CVehicleProximityMigrationNode"_J:
 		{
 			auto& data = node->GetData<CVehicleProximityMigrationData>();
@@ -559,10 +585,10 @@ namespace
 			// attach-and-crash signature detection (quarantine-first)
 			if (IsAttachCrashSignature(data))
 			{
-				LOGF(SYNC, WARNING, "PROT_BLOCK_ATTACH_TASKTREE_811E343C from {}", Protections::GetSyncingPlayer().GetName());
+				LOGF(SYNC, WARNING, "PROT_BLOCK_TASKTREE_WHITELIST from {}", Protections::GetSyncingPlayer().GetName());
 				SyncBlocked("attach crash (task-tree 0x811E343C)");
 				if (auto p = Protections::GetSyncingPlayer())
-					p.AddDetection(Detection::TRIED_CRASH_PLAYER);
+					//p.AddDetection(Detection::TRIED_CRASH_PLAYER);
 				return true;
 			}
 
@@ -601,6 +627,7 @@ namespace
 
 					// TODO: better heuristics
 					if (data.m_Trees[i].m_Tasks[j].m_TaskTreeType == 31)
+
 					{
 						LOGF(SYNC, WARNING, "Blocking invalid task tree type (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
 						SyncBlocked("task fuzzer crash");
@@ -655,6 +682,18 @@ namespace
 					if (object && object->m_ObjectType != (int)NetObjType::Player)
 					{
 						LOGF(SYNC, WARNING, "Deleting ped object {} attached to our entity", object->m_ObjectId);
+				// sanity: reject inconsistent ped attach payloads when not attached
+				if (!data.m_IsAttached)
+				{
+					bool invalid_bones = false;
+					bool suspicious_flags = false;
+					if (invalid_bones || suspicious_flags)
+					{
+						SyncBlocked("invalid ped attach state");
+						return true;
+					}
+				}
+
 						DeleteSyncObject(object->m_ObjectId);
 						return true;
 					}

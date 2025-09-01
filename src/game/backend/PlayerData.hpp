@@ -45,6 +45,8 @@ namespace YimMenu
 		RateLimiter m_WeaponDamageRateLimit{2s, 6};
 		RateLimiter m_TrainEventRateLimit{10s, 3};
 		RateLimiter m_AttachRateLimit{2s, 4};
+		RateLimiter m_GhostEventRateLimit{3s, 5};
+
 
 
 		std::optional<std::uint64_t> m_PeerIdToSpoofTo{};

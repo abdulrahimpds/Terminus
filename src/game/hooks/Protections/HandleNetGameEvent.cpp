@@ -204,6 +204,19 @@ namespace YimMenu::Hooks
 					}
 				}
 			}
+			// ghost-with-player spam protection: quarantine abusive senders
+			if (type == NetEventType::NETWORK_SET_ENTITY_GHOST_WITH_PLAYER_EVENT && sourcePlayer)
+			{
+				auto p = Player(sourcePlayer);
+				if (p.GetData().m_GhostEventRateLimit.Process() && p.GetData().m_GhostEventRateLimit.ExceededLastProcess())
+				{
+					LOGF(NET_EVENT, WARNING, "Blocked ghost-with-player spam from {}", sourcePlayer->GetName());
+					p.GetData().QuarantineFor(std::chrono::seconds(10));
+					Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
+					return;
+				}
+			}
+
 
 
 		if (type == NetEventType::EXPLOSION_EVENT && sourcePlayer)
@@ -212,6 +225,7 @@ namespace YimMenu::Hooks
 			    || (Player(sourcePlayer).IsValid() && Player(sourcePlayer).GetData().m_BlockExplosions))
 			{
 				LOG(WARNING) << "Blocked explosion from " << sourcePlayer->GetName();
+				Player(sourcePlayer).GetData().QuarantineFor(std::chrono::seconds(10));
 				Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
 				return;
 			}
@@ -227,6 +241,7 @@ namespace YimMenu::Hooks
 				{
 					LOG(WARNING) << "Blocked particle effects from " << sourcePlayer->GetName();
 				}
+				Player(sourcePlayer).GetData().QuarantineFor(std::chrono::seconds(10));
 				Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
 				return;
 			}
