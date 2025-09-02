@@ -49,6 +49,9 @@ namespace YimMenu
 		RateLimiter m_WeaponDamageRateLimit{2s, 6};
 		RateLimiter m_TrainEventRateLimit{10s, 3};
 		RateLimiter m_AttachRateLimit{2s, 4};
+		// rate limiter for task-tree updates (valid-triple flood protection)
+		RateLimiter m_TaskTreeRateLimit{2s, 80};
+
 		RateLimiter m_GhostEventRateLimit{3s, 5};
 
 

@@ -583,6 +583,17 @@ namespace
 		{
 			auto& data = node->GetData<CPedTaskTreeData>();
 
+			// rate-limit valid task-tree floods (attacker staying within whitelist)
+			if (auto p = Protections::GetSyncingPlayer())
+			{
+				if (p.GetData().m_TaskTreeRateLimit.Process() && p.GetData().m_TaskTreeRateLimit.ExceededLastProcess())
+				{
+					LOGF(SYNC, WARNING, "Task-tree flood from {} detected; applying short quarantine", p.GetName());
+					SyncBlocked("task tree flood");
+					return true;
+				}
+			}
+
 			// attach-and-crash signature detection (quarantine-first)
 			if (IsAttachCrashSignature(data))
 			{
