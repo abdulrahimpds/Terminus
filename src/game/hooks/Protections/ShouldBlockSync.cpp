@@ -21,7 +21,6 @@
 #include <network/CNetworkScSession.hpp>
 #include <network/netObject.hpp>
 #include <network/rlGamerInfo.hpp>
-#include "game/backend/CrashSignatures.hpp"
 #include <network/sync/CProjectBaseSyncDataNode.hpp>
 #include <network/sync/animal/CAnimalCreationData.hpp>
 #include <network/sync/animscene/CAnimSceneCreationData.hpp>
@@ -147,7 +146,7 @@ namespace
 
 	static const std::unordered_set<uint32_t> g_CageModels        = {0x99C0CFCF, 0xF3D580D3, 0xEE8254F6, 0xC2D200FE};
 	static const std::unordered_set<uint32_t> g_ValidPlayerModels = {"mp_male"_J, "mp_female"_J};
-
+	
 	static const std::unordered_set<uint32_t> g_BlacklistedAnimScenes = {"script@beat@town@peepingtom@spankscene"_J, "script@story@sal1@ig@sal1_18_lenny_on_lenny@sal1_18_lenny_on_lenny"_J, "script@vignette@dutch_33@player_karen@dance"_J, "script@vignette@beecher@abigail_6@action_enter"_J};
 
 	inline bool IsValidPlayerModel(rage::joaat_t model)
@@ -290,75 +289,57 @@ namespace
 	}
 
 	// note that object can be nullptr here if it hasn't been created yet (i.e. in the creation queue)
-	// hybrid suspicious/confirm logic
+	// attach-and-crash signature (task-tree 0x811E343C)
+	// detects a specific malicious CPedTaskTree sequence and quarantines the sender
 	static bool IsAttachCrashSignature(CPedTaskTreeData& data)
 	{
-		// stage-gate to minimize noise
+		// script command/stage gate seen consistently in logs (allow multiple hashes)
 		{
 			auto cmd = data.m_ScriptCommand;
 			if (!((cmd == 0x811E343Cu || cmd == 0x82508255u) && data.m_ScriptTaskStage == 3))
 				return false;
 		}
 
-		bool whitelist_violation = false;
+		bool hasSequence = false;
+
 		for (int i = 0; i < data.GetNumTaskTrees(); ++i)
 		{
 			const auto& tree = data.m_Trees[i];
-			int maxRead = std::min<int>(static_cast<int>(tree.m_NumTasks), 16);
+			if (tree.m_NumTasks != 4)
+				continue;
 
-			if (maxRead > 0 && !IsReadable(&tree.m_Tasks[0], size_t(maxRead) * sizeof(tree.m_Tasks[0])))
-			{
-				LOGF(SYNC, WARNING, "Task array unreadable in whitelist check (tree={}) from {}", i, Protections::GetSyncingPlayer().GetName());
-				return true; // definitely malicious
-			}
+			const int types[4]     = {142, 502, 503, 138};
+			const int ttree[4]     = {0, 1, 2, 3};
+			const uint32_t seq[4]  = {0xFFFFFFFFu, 0u, 1u, 2u};
 
-			for (int j = 0; j < maxRead; ++j)
+			bool match = true;
+			for (int j = 0; j < 4; ++j)
 			{
 				const auto& t = tree.m_Tasks[j];
-				if (!YimMenu::CrashSignatures::IsValidTaskTriple(i, t.m_TaskType, t.m_TaskTreeType))
+				if (t.m_TaskType != types[j] ||
+				    t.m_TaskUnk1 != 1 ||
+				    t.m_TaskTreeType != ttree[j] ||
+				    t.m_TaskSequenceId != seq[j] ||
+				    t.m_TaskTreeDepth != 0)
 				{
-					whitelist_violation = true;
+					match = false;
 					break;
 				}
 			}
-			if (whitelist_violation) break;
-		}
-
-		if (!whitelist_violation)
-			return false;
-
-		// confirm the attach crash signature only if suspicious
-		for (int i = 0; i < data.GetNumTaskTrees(); ++i)
-		{
-			const auto& tree = data.m_Trees[i];
-			if (tree.m_NumTasks < 3)
-				continue;
-
-			const auto& t0 = tree.m_Tasks[0];
-			const auto& t1 = tree.m_Tasks[1];
-			const auto& t2 = tree.m_Tasks[2];
-
-			const bool base_ok =
-			    t0.m_TaskType == 142 && t1.m_TaskType == 502 &&
-			    t0.m_TaskUnk1 == 1 && t1.m_TaskUnk1 == 1 && t2.m_TaskUnk1 == 1 &&
-			    t0.m_TaskTreeType == 0 && t1.m_TaskTreeType == 1 && t2.m_TaskTreeType == 2 &&
-			    t0.m_TaskSequenceId == 0xFFFFFFFFu && t1.m_TaskSequenceId == 0u && t2.m_TaskSequenceId == 1u &&
-			    t0.m_TaskTreeDepth == 0 && t1.m_TaskTreeDepth == 0 && t2.m_TaskTreeDepth == 0;
-
-			if (!base_ok)
-				continue;
-
-			if (t2.m_TaskType == 265 || t2.m_TaskType == 503 || t2.m_TaskType == 138)
-				return true;
-
-			if (tree.m_NumTasks >= 4)
+			if (match)
 			{
-				const auto& t3 = tree.m_Tasks[3];
-				if (t2.m_TaskType == 503 && t3.m_TaskType == 138 && t3.m_TaskUnk1 == 1 && t3.m_TaskTreeType == 3 && t3.m_TaskSequenceId == 2u && t3.m_TaskTreeDepth == 0)
-					return true;
+				hasSequence = true;
+				break;
 			}
 		}
-		return false;
+
+		if (!hasSequence)
+			return false;
+
+		// optional booster: presence of a single 322 task with unk1==255 (observed), not required to fire
+		// keeping detection narrow to avoid false positives
+
+		return true;
 	}
 
 	bool ShouldBlockNode(CProjectBaseSyncDataNode* node, SyncNodeId id, NetObjType type, rage::netObject* object)
@@ -438,21 +419,11 @@ namespace
 				SyncBlocked("invalid object crash");
 				return true;
 			}
-			// strong validation even if node/type mismatched; some payloads misreport
-			if (data.m_ModelHash)
+			if (data.m_ModelHash && !STREAMING::_IS_MODEL_AN_OBJECT(data.m_ModelHash))
 			{
-				if (!STREAMING::_IS_MODEL_AN_OBJECT(data.m_ModelHash) || !STREAMING::IS_MODEL_VALID(data.m_ModelHash))
-				{
-					LOGF(SYNC, WARNING, "Blocking invalid object creation model 0x{:X} from {}", data.m_ModelHash, Protections::GetSyncingPlayer().GetName());
-					SyncBlocked("mismatched/invalid object model crash");
-					return true;
-				}
-				if (data.m_ModelHash == 0x2AB28031)
-				{
-					LOGF(SYNC, WARNING, "Blocking blacklisted object model 0x{:X} from {}", data.m_ModelHash, Protections::GetSyncingPlayer().GetName());
-					SyncBlocked("blacklisted object model crash");
-					return true;
-				}
+				LOGF(SYNC, WARNING, "Blocking invalid object creation model 0x{:X} from {}", data.m_ModelHash, Protections::GetSyncingPlayer().GetName());
+				SyncBlocked("mismatched object model crash");
+				return true;
 			}
 			if (g_CageModels.count(data.m_ModelHash))
 			{
@@ -523,7 +494,6 @@ namespace
 
 			break;
 		}
-
 		case "CPhysicalAttachNode"_J:
 		{
 			auto& data = node->GetData<CPhysicalAttachData>();
@@ -589,7 +559,6 @@ namespace
 			}
 			break;
 		}
-
 		case "CVehicleProximityMigrationNode"_J:
 		{
 			auto& data = node->GetData<CVehicleProximityMigrationData>();
@@ -614,50 +583,21 @@ namespace
 		{
 			auto& data = node->GetData<CPedTaskTreeData>();
 
-			// hybrid: treat whitelist-violation as suspicion; confirm signature before blocking
+			// attach-and-crash signature detection (quarantine-first)
 			if (IsAttachCrashSignature(data))
 			{
-				auto p = Protections::GetSyncingPlayer();
-				if (p)
-				{
-					auto& d = p.GetData();
-					// bump suspicion and quarantine; if repeated quickly, escalate to block
-					auto now = std::chrono::steady_clock::now();
-					if (d.m_LastTaskTreeSuspicion.time_since_epoch().count() == 0 || (now - d.m_LastTaskTreeSuspicion) > std::chrono::seconds(30))
-					{
-						d.m_TaskTreeSuspicions = 0; // decay/reset after quiet period
-					}
-					d.m_LastTaskTreeSuspicion = now;
-					d.m_TaskTreeSuspicions++;
-					d.QuarantineFor(std::chrono::seconds(10));
-
-					// require either signature-confirmation OR enough rapid suspicions
-					// since IsAttachCrashSignature() already confirmed the shaped pattern, we escalate immediately on 2+ hits in 20-30s
-					if (d.m_TaskTreeSuspicions >= 2)
-					{
-						LOGF(SYNC, WARNING, "Blocking attach crash after repeated suspicious task trees from {}", p.GetName());
-						SyncBlocked("attach crash (task-tree gated)");
-						//p.AddDetection(Detection::TRIED_CRASH_PLAYER);
-						return true;
-					}
-				}
-
-				// first suspicious hit: quarantine only, do not block yet
-				return false;
+				LOGF(SYNC, WARNING, "PROT_BLOCK_ATTACH_TASKTREE_811E343C from {}", Protections::GetSyncingPlayer().GetName());
+				SyncBlocked("attach crash (task-tree 0x811E343C)");
+				if (auto p = Protections::GetSyncingPlayer())
+					p.AddDetection(Detection::TRIED_CRASH_PLAYER);
+				return true;
 			}
 
 			for (int i = 0; i < data.GetNumTaskTrees(); i++)
 			{
 				const int num = data.m_Trees[i].m_NumTasks;
-				if (num > 16)
-				{
-					LOGF(SYNC, WARNING, "Blocking task tree with excessive task count ({} > 16) from {}", num, Protections::GetSyncingPlayer().GetName());
-					SyncBlocked("task fuzzer count");
-					if (object) DeleteSyncObjectLater(object->m_ObjectId);
-					return true;
-				}
-
 				const int maxRead = std::min(num, 16);
+
 				if (maxRead > 0)
 				{
 					if (!IsReadable(&data.m_Trees[i].m_Tasks[0], size_t(maxRead) * sizeof(data.m_Trees[i].m_Tasks[0])))
@@ -668,24 +608,33 @@ namespace
 					}
 				}
 
-				for (int j = 0; j < maxRead; j++)
+				for (int j = 0; j < maxRead; ++j)
 				{
-					if (data.m_Trees[i].m_Tasks[j].m_TaskType == -1)
+					const auto& t = data.m_Trees[i].m_Tasks[j];
+
+					// whitelist enforcement: block + quarantine like other attacks
+					if (!YimMenu::CrashSignatures::IsValidTaskTriple(i, t.m_TaskType, t.m_TaskTreeType))
+					{
+						LOGF(SYNC, WARNING, "Blocking non-whitelisted task triple (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
+						SyncBlocked("task whitelist");
+						//if (object) DeleteSyncObjectLater(object->m_ObjectId);
+						return true;
+					}
+
+					if (t.m_TaskType == -1)
 					{
 						LOGF(SYNC, WARNING, "Blocking null task type (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
 						SyncBlocked("task fuzzer crash");
-						// TODO fix node corruption bug
-						// Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER); // no false positives possible
+						//if (object) DeleteSyncObjectLater(object->m_ObjectId);
 						return true;
 					}
 
 					// TODO: better heuristics
-					if (data.m_Trees[i].m_Tasks[j].m_TaskTreeType == 31)
-
+					if (t.m_TaskTreeType == 31)
 					{
 						LOGF(SYNC, WARNING, "Blocking invalid task tree type (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
 						SyncBlocked("task fuzzer crash");
-						// Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER); // no false positives possible
+						//if (object) DeleteSyncObjectLater(object->m_ObjectId);
 						return true;
 					}
 				}
@@ -736,17 +685,17 @@ namespace
 					if (object && object->m_ObjectType != (int)NetObjType::Player)
 					{
 						LOGF(SYNC, WARNING, "Deleting ped object {} attached to our entity", object->m_ObjectId);
-				// sanity: reject inconsistent ped attach payloads when not attached
-				if (!data.m_IsAttached)
-				{
-					bool invalid_bones = false;
-					bool suspicious_flags = false;
-					if (invalid_bones || suspicious_flags)
-					{
-						SyncBlocked("invalid ped attach state");
-						return true;
-					}
-				}
+						// sanity: reject inconsistent ped attach payloads when not attached
+						if (!data.m_IsAttached)
+						{
+							bool invalid_bones = false;
+							bool suspicious_flags = false;
+							if (invalid_bones || suspicious_flags)
+							{
+								SyncBlocked("invalid ped attach state");
+								return true;
+							}
+						}
 
 						DeleteSyncObject(object->m_ObjectId);
 						return true;
