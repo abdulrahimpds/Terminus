@@ -273,6 +273,16 @@ namespace YimMenu::Hooks
 		}
 		case NetMessageType::CONNECT_REQUEST:
 		{
+			// NT crash mitigation: filter bad sizes and impossible contexts early
+			if (frame->m_Length != 14)
+			{
+				if (Features::_LogPackets.GetState())
+					LOGF(VERBOSE, "Dropped CONNECT_REQUEST with unexpected size {}", frame->m_Length);
+				if (auto qp = Players::GetByMessageId(frame->m_MsgId))
+					qp.GetData().QuarantineFor(std::chrono::seconds(10));
+				return true;
+			}
+			// if session is already started and lobby lock is on, deny
 			if (*Pointers.IsSessionStarted && Features::_LockLobby.GetState())
 			{
 				LOG(WARNING) << "Denying a player from joining";
@@ -324,6 +334,33 @@ namespace YimMenu::Hooks
 			}
 			break;
 		}
+			case NetMessageType::READY_FOR_GAME_SYNC:
+			{
+				// valid frame is exactly 3 bytes; drop anything else (NT crash mitigation)
+				if (frame->m_Length != 3)
+				{
+					if (Features::_LogPackets.GetState())
+						LOGF(VERBOSE, "Dropped READY_FOR_GAME_SYNC with unexpected size {}", frame->m_Length);
+					if (auto qp = Players::GetByMessageId(frame->m_MsgId))
+						qp.GetData().QuarantineFor(std::chrono::seconds(10));
+					return true;
+				}
+				break;
+			}
+			case NetMessageType::PLAYER_INITIALIZED:
+			{
+				// valid frame is exactly 3 bytes; drop anything else (NT crash mitigation)
+				if (frame->m_Length != 3)
+				{
+					if (Features::_LogPackets.GetState())
+						LOGF(VERBOSE, "Dropped PLAYER_INITIALIZED with unexpected size {}", frame->m_Length);
+					if (auto qp = Players::GetByMessageId(frame->m_MsgId))
+						qp.GetData().QuarantineFor(std::chrono::seconds(10));
+					return true;
+				}
+				break;
+			}
+
 		case NetMessageType::READY_FOR_GAME_SYNC_ACK:
 		{
 			// NT crash mitigation: valid ACK is exactly 3 bytes; drop anything else
