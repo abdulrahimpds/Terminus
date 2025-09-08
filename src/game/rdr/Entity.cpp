@@ -19,7 +19,7 @@ namespace YimMenu
 {
 	void Entity::PopulatePointer()
 	{
-		// validate handle against crash signatures and attack patterns
+		// validate handle against crash signatures and attack patterns (disabled to avoid false positives)
 		if (CrashSignatures::IsKnownCrashHandle(m_Handle))
 		{
 			LOG(WARNING) << "PopulatePointer: Blocked crash signature handle " << m_Handle;
@@ -27,21 +27,12 @@ namespace YimMenu
 			return;
 		}
 
-		// detect fuzzer attack patterns in entity handles
-		// fuzzer attacks often use predictable handle patterns
-		if ((m_Handle & 0xFFFFFFFF) == 0x97 ||   // Nemesis fuzzer pattern
-		    (m_Handle & 0xFFFFFFFF) == 0x7 ||    // Nemesis fuzzer pattern
-		    (m_Handle & 0xFFFFFFFF) == 0xC08 ||  // BringPlayer fuzzer pattern
-		    (m_Handle & 0xFFFFFFFF) == 0x46)     // AntiLasso fuzzer pattern
-		{
-			LOG(WARNING) << "PopulatePointer: Blocked fuzzer attack pattern in handle " << m_Handle;
-			m_Pointer = nullptr;
-			return;
-		}
+		// detect fuzzer attack patterns in entity handles (disabled due to false positives)
+		// previously blocked: 0x97, 0x7, 0xC08, 0x46
 
 		m_Pointer = Pointers.HandleToPtr(m_Handle);
 
-		// validate resulting pointer against crash signatures and attack patterns
+		// validate resulting pointer against crash signatures and attack patterns (disabled to avoid false positives)
 		if (CrashSignatures::IsKnownCrashPointerForEntities(m_Pointer))
 		{
 			LOG(WARNING) << "PopulatePointer: Blocked crash signature or attack pattern in pointer " << HEX(reinterpret_cast<uintptr_t>(m_Pointer));
@@ -64,7 +55,7 @@ namespace YimMenu
 
 			m_Handle = Pointers.PtrToHandle(m_Pointer);
 
-			// validate resulting handle against crash signatures
+			// validate resulting handle against crash signatures (disabled to avoid false positives)
 			if (CrashSignatures::IsKnownCrashHandle(m_Handle))
 			{
 				LOG(WARNING) << "PopulateHandle: Blocked crash signature handle " << m_Handle;
@@ -72,16 +63,8 @@ namespace YimMenu
 				return;
 			}
 
-			// detect fuzzer attack patterns in generated handles
-			if ((m_Handle & 0xFFFFFFFF) == 0x97 ||   // Nemesis fuzzer pattern
-			    (m_Handle & 0xFFFFFFFF) == 0x7 ||    // Nemesis fuzzer pattern
-			    (m_Handle & 0xFFFFFFFF) == 0xC08 ||  // BringPlayer fuzzer pattern
-			    (m_Handle & 0xFFFFFFFF) == 0x46)     // AntiLasso fuzzer pattern
-			{
-				LOG(WARNING) << "PopulateHandle: Blocked fuzzer attack pattern in generated handle " << m_Handle;
-				m_Handle = 0;
-				return;
-			}
+			// detect fuzzer attack patterns in generated handles (disabled to avoid false positives)
+			// previously blocked: 0x97, 0x7, 0xC08, 0x46
 		}
 	}
 

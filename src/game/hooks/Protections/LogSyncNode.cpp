@@ -306,6 +306,46 @@ namespace YimMenu::Hooks
 			LOG_FIELD_UNDOCUM_C(39, char);
 			LOG_FIELD_UNDOCUM_C(40, char);
 			break;
+			case "CGlobalFlagsNode"_J:
+			{
+				if (player && player.GetData().IsSyncsBlocked())
+				{
+					auto base = (&node->GetData<char>());
+					if (IsReadable(base, 16))
+					{
+						// log minimal header words only when player is already quarantined
+						LOG(INFO) << "\tHDR_0: " << *(int32_t*)(base + 0);
+						LOG(INFO) << "\tHDR_4: " << *(int32_t*)(base + 4);
+						LOG(INFO) << "\tHDR_8: " << *(int32_t*)(base + 8);
+						LOG(INFO) << "\tHDR_12: " << *(int32_t*)(base + 12);
+					}
+					else
+					{
+						LOG(INFO) << "\tHDR: <unreadable>";
+					}
+				}
+				break;
+			}
+			case "CWorldStateBaseNode"_J:
+			{
+				if (player && player.GetData().IsSyncsBlocked())
+				{
+					auto base = (&node->GetData<char>());
+					if (IsReadable(base, 16))
+					{
+						LOG(INFO) << "\tHDR_0: " << *(int32_t*)(base + 0);
+						LOG(INFO) << "\tHDR_4: " << *(int32_t*)(base + 4);
+						LOG(INFO) << "\tHDR_8: " << *(int32_t*)(base + 8);
+						LOG(INFO) << "\tHDR_12: " << *(int32_t*)(base + 12);
+					}
+					else
+					{
+						LOG(INFO) << "\tHDR: <unreadable>";
+					}
+				}
+				break;
+			}
+
 		case "CTrainControlNode"_J:
 			LOG_FIELD_UNDOCUM(160, float);
 			LOG_FIELD_UNDOCUM_C(164, char);

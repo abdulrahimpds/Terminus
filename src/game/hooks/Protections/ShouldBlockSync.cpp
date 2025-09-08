@@ -336,9 +336,6 @@ namespace
 		if (!hasSequence)
 			return false;
 
-		// optional booster: presence of a single 322 task with unk1==255 (observed), not required to fire
-		// keeping detection narrow to avoid false positives
-
 		return true;
 	}
 
@@ -365,17 +362,17 @@ namespace
 				data.m_BannedPed = true; // blocking this seems difficult
 				return true;
 			}
-			// ped flood control
-			if (auto p = Protections::GetSyncingPlayer())
-			{
-				if (p.GetData().m_PedFloodLimit.Process() && p.GetData().m_PedFloodLimit.ExceededLastProcess())
-				{
-					SyncBlocked("ped flood");
-					if (object)
-						DeleteSyncObject(object->m_ObjectId);
-					return true;
-				}
-			}
+			// ped flood control disabled (removed due to false positives)
+			// if (auto p = Protections::GetSyncingPlayer())
+			// {
+			// 	if (p.GetData().m_PedFloodLimit.Process() && p.GetData().m_PedFloodLimit.ExceededLastProcess())
+			// 	{
+			// 		SyncBlocked("ped flood");
+			// 		if (object)
+			// 			DeleteSyncObject(object->m_ObjectId);
+			// 		return true;
+			// 	}
+			// }
 			break;
 		}
 		case "CAnimalCreationNode"_J:
@@ -397,17 +394,17 @@ namespace
 				return true;
 			}
 
-			// animal flood control
-			if (auto p = Protections::GetSyncingPlayer())
-			{
-				if (p.GetData().m_PedFloodLimit.Process() && p.GetData().m_PedFloodLimit.ExceededLastProcess())
-				{
-					SyncBlocked("animal flood");
-					if (object)
-						DeleteSyncObject(object->m_ObjectId);
-					return true;
-				}
-			}
+			// animal flood control disabled (removed due to false positives)
+			// if (auto p = Protections::GetSyncingPlayer())
+			// {
+			// 	if (p.GetData().m_PedFloodLimit.Process() && p.GetData().m_PedFloodLimit.ExceededLastProcess())
+			// 	{
+			// 		SyncBlocked("animal flood");
+			// 		if (object)
+			// 			DeleteSyncObject(object->m_ObjectId);
+			// 		return true;
+			// 	}
+			// }
 			break;
 		}
 		case "CObjectCreationNode"_J:
@@ -434,16 +431,16 @@ namespace
 			}
 
 			// object flood control
-			if (auto p = Protections::GetSyncingPlayer())
-			{
-				if (p.GetData().m_ObjectFloodLimit.Process() && p.GetData().m_ObjectFloodLimit.ExceededLastProcess())
-				{
-					SyncBlocked("object flood");
-					if (object)
-						DeleteSyncObject(object->m_ObjectId);
-					return true;
-				}
-			}
+			// if (auto p = Protections::GetSyncingPlayer())
+			// {
+			// 	if (p.GetData().m_ObjectFloodLimit.Process() && p.GetData().m_ObjectFloodLimit.ExceededLastProcess())
+			// 	{
+			// 		SyncBlocked("object flood");
+			// 		if (object)
+			// 			DeleteSyncObject(object->m_ObjectId);
+			// 		return true;
+			// 	}
+			// }
 
 			break;
 		}
@@ -482,29 +479,29 @@ namespace
 				return true;
 			}
 
-			// creation rate limiting regardless of model, to stop valid-model floods
-			if (auto p = Protections::GetSyncingPlayer())
-			{
-				// ambient spawns and ships can be abused; keep thresholds stricter
-				if (data.m_PopulationType == 8)
-				{
-					if (p.GetData().m_AmbientVehicleCreationRateLimit.Process() && p.GetData().m_AmbientVehicleCreationRateLimit.ExceededLastProcess())
-					{
-						LOGF(SYNC, WARNING, "Ambient vehicle creation flood from {} (model 0x{:X}); quarantining", p.GetName(), data.m_ModelHash);
-						SyncBlocked("ambient vehicle creation flood");
-						return true;
-					}
-				}
-				else
-				{
-					if (p.GetData().m_VehicleCreationRateLimit.Process() && p.GetData().m_VehicleCreationRateLimit.ExceededLastProcess())
-					{
-						LOGF(SYNC, WARNING, "Vehicle creation flood from {} (model 0x{:X}); quarantining", p.GetName(), data.m_ModelHash);
-						SyncBlocked("vehicle creation flood");
-						return true;
-					}
-				}
-			}
+			// vehicle creation flood control disabled (removed due to false positives)
+			// if (auto p = Protections::GetSyncingPlayer())
+			// {
+			// 	// ambient spawns and ships can be abused; keep thresholds stricter
+			// 	if (data.m_PopulationType == 8)
+			// 	{
+			// 		if (p.GetData().m_AmbientVehicleCreationRateLimit.Process() && p.GetData().m_AmbientVehicleCreationRateLimit.ExceededLastProcess())
+			// 		{
+			// 			LOGF(SYNC, WARNING, "Ambient vehicle creation flood from {} (model 0x{:X}); quarantining", p.GetName(), data.m_ModelHash);
+			// 			SyncBlocked("ambient vehicle creation flood");
+			// 			return true;
+			// 		}
+			// 	}
+			// 	else
+			// 	{
+			// 		if (p.GetData().m_VehicleCreationRateLimit.Process() && p.GetData().m_VehicleCreationRateLimit.ExceededLastProcess())
+			// 		{
+			// 			LOGF(SYNC, WARNING, "Vehicle creation flood from {} (model 0x{:X}); quarantining", p.GetName(), data.m_ModelHash);
+			// 			SyncBlocked("vehicle creation flood");
+			// 			return true;
+			// 		}
+			// 	}
+			// }
 
 			// legacy: specific large vehicle flood guard (kept for compatibility with your setting)
 			if (data.m_PopulationType == 8 && data.m_ModelHash == "SHIP_GUAMA02"_J && Protections::GetSyncingPlayer().GetData().m_LargeVehicleFloodLimit.Process() && Features::_BlockVehicleFlooding.GetState())
@@ -610,16 +607,16 @@ namespace
 		{
 			auto& data = node->GetData<CPedTaskTreeData>();
 
-			// rate-limit valid task-tree floods (attacker staying within whitelist)
-			if (auto p = Protections::GetSyncingPlayer())
-			{
-				if (p.GetData().m_TaskTreeRateLimit.Process() && p.GetData().m_TaskTreeRateLimit.ExceededLastProcess())
-				{
-					LOGF(SYNC, WARNING, "Task-tree flood from {} detected; applying short quarantine", p.GetName());
-					SyncBlocked("task tree flood");
-					return true;
-				}
-			}
+			// task-tree flood control disabled (removed due to false positives)
+			// if (auto p = Protections::GetSyncingPlayer())
+			// {
+			// 	if (p.GetData().m_TaskTreeRateLimit.Process() && p.GetData().m_TaskTreeRateLimit.ExceededLastProcess())
+			// 	{
+			// 		LOGF(SYNC, WARNING, "Task-tree flood from {} detected; applying short quarantine", p.GetName());
+			// 		SyncBlocked("task tree flood");
+			// 		return true;
+			// 	}
+			// }
 
 			// attach-and-crash signature detection (quarantine-first)
 			if (IsAttachCrashSignature(data))
@@ -758,17 +755,17 @@ namespace
 			}
 			break;
 		}
-		case "CProjectileAttachNode"_J:
-		{
-			// conservative guard: delete projectile if an attach node tries to bind it (common crash vector)
-			if (object && object->m_ObjectType == (uint16_t)NetObjType::WorldProjectile)
-			{
-				SyncBlocked("projectile attachment");
-				DeleteSyncObject(object->m_ObjectId);
-				return true;
-			}
-			break;
-		}
+		// case "CProjectileAttachNode"_J:
+		// {
+		// 	// conservative guard: delete projectile if an attach node tries to bind it (common crash vector)
+		// 	if (object && object->m_ObjectType == (uint16_t)NetObjType::WorldProjectile)
+		// 	{
+		// 		SyncBlocked("projectile attachment");
+		// 		DeleteSyncObject(object->m_ObjectId);
+		// 		return true;
+		// 	}
+		// 	break;
+		// }
 		case "CPropSetCreationNode"_J:
 		{
 			auto& data = node->GetData<CPropSetCreationData>();
@@ -781,16 +778,16 @@ namespace
 			}
 
 			// propset flood control
-			if (auto p = Protections::GetSyncingPlayer())
-			{
-				if (p.GetData().m_PropSetFloodLimit.Process() && p.GetData().m_PropSetFloodLimit.ExceededLastProcess())
-				{
-					SyncBlocked("propset flood");
-					if (object)
-						DeleteSyncObject(object->m_ObjectId);
-					return true;
-				}
-			}
+			// if (auto p = Protections::GetSyncingPlayer())
+			// {
+			// 	if (p.GetData().m_PropSetFloodLimit.Process() && p.GetData().m_PropSetFloodLimit.ExceededLastProcess())
+			// 	{
+			// 		SyncBlocked("propset flood");
+			// 		if (object)
+			// 			DeleteSyncObject(object->m_ObjectId);
+			// 		return true;
+			// 	}
+			// }
 			break;
 		}
 		case "CPlayerCreationNode"_J:
@@ -970,6 +967,30 @@ namespace
 			}
 			break;
 		}
+			case "CGlobalFlagsNode"_J:
+			{
+				auto data = (std::uint64_t)&node->GetData<char>();
+				// conservative content safety: ensure minimal header is readable; do not rate-limit
+				if (!IsReadable((void*)(data + 0), 16))
+				{
+					SyncBlocked("global flags unreadable header");
+					if (object) DeleteSyncObjectLater(object->m_ObjectId);
+					return true;
+				}
+				break;
+			}
+			case "CWorldStateBaseNode"_J:
+			{
+				auto data = (std::uint64_t)&node->GetData<char>();
+				if (!IsReadable((void*)(data + 0), 16))
+				{
+					SyncBlocked("world state unreadable header");
+					if (object) DeleteSyncObjectLater(object->m_ObjectId);
+					return true;
+				}
+				break;
+			}
+
 		case "CAnimSceneCreationNode"_J:
 		{
 			auto& data = node->GetData<CAnimSceneCreationData>();

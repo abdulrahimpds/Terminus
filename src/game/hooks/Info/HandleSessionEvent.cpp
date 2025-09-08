@@ -236,6 +236,29 @@ namespace YimMenu::Hooks
 			auto event = reinterpret_cast<rage::rlScLeaveSessionEvent*>(evt);
 			LOG(INFO) << "Leave session: reason = " << event->m_Reason << " reason2 = " << event->m_Reason2;
 
+			// reset all player quarantine and rate-limit state to prevent join issues after network faults
+			for (auto& [idx, player] : Players::GetPlayers())
+			{
+				auto& data = player.GetData();
+				// clear quarantine state
+				data.m_BlockSyncsUntil.reset();
+				// reset all rate limiters to fresh state
+				data.m_VehicleFloodLimit = RateLimiter{10s, 10};
+				data.m_PedFloodLimit = RateLimiter{10s, 25};
+				data.m_ObjectFloodLimit = RateLimiter{10s, 30};
+				data.m_PropSetFloodLimit = RateLimiter{10s, 15};
+				data.m_TaskTreeRateLimit = RateLimiter{2s, 80};
+				data.m_LargeVehicleFloodLimit = RateLimiter{15s, 5};
+				data.m_TickerMessageRateLimit = RateLimiter{5s, 3};
+				data.m_WeaponDamageRateLimit = RateLimiter{2s, 6};
+				data.m_TrainEventRateLimit = RateLimiter{10s, 3};
+				data.m_AttachRateLimit = RateLimiter{2s, 4};
+				data.m_GhostEventRateLimit = RateLimiter{3s, 5};
+				data.m_NullObjectFloodLimit = RateLimiter{std::chrono::milliseconds(200), 8};
+				data.m_VehicleCreationRateLimit = RateLimiter{2s, 3};
+				data.m_AmbientVehicleCreationRateLimit = RateLimiter{5s, 1};
+			}
+
 			// when leaving session with custom model, flag for auto fix on next join
 			auto selfPed = Self::GetPed();
 			if (selfPed.IsValid())
