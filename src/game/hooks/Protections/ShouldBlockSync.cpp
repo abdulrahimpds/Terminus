@@ -146,7 +146,7 @@ namespace
 
 	static const std::unordered_set<uint32_t> g_CageModels        = {0x99C0CFCF, 0xF3D580D3, 0xEE8254F6, 0xC2D200FE};
 	static const std::unordered_set<uint32_t> g_ValidPlayerModels = {"mp_male"_J, "mp_female"_J};
-	
+
 	static const std::unordered_set<uint32_t> g_BlacklistedAnimScenes = {"script@beat@town@peepingtom@spankscene"_J, "script@story@sal1@ig@sal1_18_lenny_on_lenny@sal1_18_lenny_on_lenny"_J, "script@vignette@dutch_33@player_karen@dance"_J, "script@vignette@beecher@abigail_6@action_enter"_J};
 
 	inline bool IsValidPlayerModel(rage::joaat_t model)
@@ -472,6 +472,8 @@ namespace
 		case "CVehicleCreationNode"_J:
 		{
 			auto& data = node->GetData<CVehicleCreationData>();
+
+			// global sanity: must be a vehicle model
 			if (data.m_ModelHash && !STREAMING::IS_MODEL_A_VEHICLE(data.m_ModelHash))
 			{
 				LOGF(SYNC, WARNING, "Blocking invalid vehicle creation model 0x{:X} from {}", data.m_ModelHash, Protections::GetSyncingPlayer().GetName());
@@ -480,6 +482,31 @@ namespace
 				return true;
 			}
 
+			// creation rate limiting regardless of model, to stop valid-model floods
+			if (auto p = Protections::GetSyncingPlayer())
+			{
+				// ambient spawns and ships can be abused; keep thresholds stricter
+				if (data.m_PopulationType == 8)
+				{
+					if (p.GetData().m_AmbientVehicleCreationRateLimit.Process() && p.GetData().m_AmbientVehicleCreationRateLimit.ExceededLastProcess())
+					{
+						LOGF(SYNC, WARNING, "Ambient vehicle creation flood from {} (model 0x{:X}); quarantining", p.GetName(), data.m_ModelHash);
+						SyncBlocked("ambient vehicle creation flood");
+						return true;
+					}
+				}
+				else
+				{
+					if (p.GetData().m_VehicleCreationRateLimit.Process() && p.GetData().m_VehicleCreationRateLimit.ExceededLastProcess())
+					{
+						LOGF(SYNC, WARNING, "Vehicle creation flood from {} (model 0x{:X}); quarantining", p.GetName(), data.m_ModelHash);
+						SyncBlocked("vehicle creation flood");
+						return true;
+					}
+				}
+			}
+
+			// legacy: specific large vehicle flood guard (kept for compatibility with your setting)
 			if (data.m_PopulationType == 8 && data.m_ModelHash == "SHIP_GUAMA02"_J && Protections::GetSyncingPlayer().GetData().m_LargeVehicleFloodLimit.Process() && Features::_BlockVehicleFlooding.GetState())
 			{
 				SyncBlocked("large vehicle flood");
@@ -600,7 +627,7 @@ namespace
 				LOGF(SYNC, WARNING, "PROT_BLOCK_ATTACH_TASKTREE_811E343C from {}", Protections::GetSyncingPlayer().GetName());
 				SyncBlocked("attach crash (task-tree 0x811E343C)");
 				if (auto p = Protections::GetSyncingPlayer())
-					p.AddDetection(Detection::TRIED_CRASH_PLAYER);
+					// p.AddDetection(Detection::TRIED_CRASH_PLAYER);
 				return true;
 			}
 
@@ -614,7 +641,7 @@ namespace
 					if (!IsReadable(&data.m_Trees[i].m_Tasks[0], size_t(maxRead) * sizeof(data.m_Trees[i].m_Tasks[0])))
 					{
 						SyncBlocked("task array unreadable");
-						if (object) DeleteSyncObjectLater(object->m_ObjectId);
+						// if (object) DeleteSyncObjectLater(object->m_ObjectId);
 						return true;
 					}
 				}
@@ -980,6 +1007,26 @@ namespace
 		}
 	}
 
+		// raw logger and seh wrapper mirroring pattern used for node eval
+		static void LogSyncNode_Raw(CProjectBaseSyncDataNode* node, NetObjType type, rage::netObject* object)
+		{
+			auto sid = Nodes::Find((uint64_t)node);
+			YimMenu::Hooks::Protections::LogSyncNode(node, sid, type, object, Protections::GetSyncingPlayer());
+		}
+		using LogSyncNodeRawFn = void (*)(CProjectBaseSyncDataNode*, NetObjType, rage::netObject*);
+		static void __declspec(noinline) CallLogSyncNode_SEH(LogSyncNodeRawFn fn, CProjectBaseSyncDataNode* node, NetObjType type, rage::netObject* object, bool* outSeh)
+		{
+			__try
+			{
+				fn(node, type, object);
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER)
+			{
+				if (outSeh) *outSeh = true;
+			}
+		}
+
+
 	bool SyncNodeVisitor(CProjectBaseSyncDataNode* node, NetObjType type, rage::netObject* object)
 	{
 		if (node->IsParentNode())
@@ -995,9 +1042,19 @@ namespace
 			if (!node->IsActive())
 				return false;
 
-			auto sid = Nodes::Find((uint64_t)node);
+				auto sid = Nodes::Find((uint64_t)node);
+
+			bool log_seh = false;
 			if (YimMenu::Features::_LogClones.GetState())
-				YimMenu::Hooks::Protections::LogSyncNode(node, sid, type, object, Protections::GetSyncingPlayer());
+				CallLogSyncNode_SEH(&LogSyncNode_Raw, node, type, object, &log_seh);
+			if (log_seh)
+			{
+				auto p = ::YimMenu::Protections::GetSyncingPlayer();
+				auto sid = Nodes::Find((uint64_t)node);
+				LOGF(SYNC, WARNING, "SEH in LogSyncNode for {} from {}", sid.name ? sid.name : "unknown_node", p ? p.GetName() : "unknown");
+				if (p)
+					p.GetData().QuarantineFor(std::chrono::seconds(10));
+			}
 			{
 				bool seh = false;
 				bool blocked = CallNodeEval_SEH(&ShouldBlockNode_Raw, node, type, object, &seh);

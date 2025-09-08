@@ -50,11 +50,20 @@ namespace YimMenu
 		RateLimiter m_TrainEventRateLimit{10s, 3};
 		RateLimiter m_AttachRateLimit{2s, 4};
 		// rate limiter for task-tree updates (valid-triple flood protection)
-		RateLimiter m_TaskTreeRateLimit{2s, 80};
+		// rate limiter for null-object sync logging (detect flood of null object nodes)
+		RateLimiter m_NullObjectLogRateLimit{2s, 60};
+
+		RateLimiter m_TaskTreeRateLimit{std::chrono::seconds(2), 80};
+
+		// rate limiter for null-object pointer spam seen before crashes
+		RateLimiter m_NullObjectFloodLimit{std::chrono::milliseconds(200), 8};
+		// rate limiters for vehicle creations (generic and ambient)
+		RateLimiter m_VehicleCreationRateLimit{2s, 3};
+		RateLimiter m_AmbientVehicleCreationRateLimit{5s, 1};
 
 		RateLimiter m_GhostEventRateLimit{3s, 5};
-
-
+		// per-event rate limiters to suppress valid-but-spammed events
+		RateLimiter m_ClearTasksRateLimit{2s, 4};
 
 		std::optional<std::uint64_t> m_PeerIdToSpoofTo{};
 	};

@@ -261,6 +261,26 @@ namespace YimMenu::Hooks
 			YimMenu::Protections::SetSyncingPlayer(sourcePlayer);
 		}
 
+		// flood controls for common valid-but-abused events
+		if (sourcePlayer)
+		{
+			auto p = Player(sourcePlayer);
+			switch (type)
+			{
+			case NetEventType::NETWORK_CLEAR_PED_TASKS_EVENT:
+				if (p.GetData().m_ClearTasksRateLimit.Process() && p.GetData().m_ClearTasksRateLimit.ExceededLastProcess())
+				{
+					LOGF(NET_EVENT, WARNING, "Blocked clear tasks spam from {}", sourcePlayer->GetName());
+					p.GetData().QuarantineFor(std::chrono::seconds(10));
+					Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
+					return;
+				}
+				break;
+			default:
+				break;
+			}
+		}
+
 		// wrap original call in SEH to avoid crash on malformed payloads
 		YimMenu::Features::CallEvent_SEH(BaseHook::Get<Protections::HandleNetGameEvent, DetourHook<decltype(&Protections::HandleNetGameEvent)>>()->Original(), eventMgr, sourcePlayer, targetPlayer, type, index, handledBits, unk, buffer);
 		return;

@@ -8,6 +8,8 @@
 #include "game/hooks/Hooks.hpp"
 #include "game/pointers/Pointers.hpp"
 #include "game/rdr/Enums.hpp"
+#include "game/backend/NodeHooks.hpp"
+
 #include "game/rdr/Natives.hpp"
 #include "game/rdr/Network.hpp"
 #include "game/rdr/Nodes.hpp"
@@ -34,6 +36,29 @@
 #include <network/sync/vehicle/CVehicleProximityMigrationData.hpp>
 #include <ped/CPed.hpp>
 #include <rage/vector.hpp>
+#include <Windows.h>
+
+static bool IsReadable(const void* p, size_t len)
+{
+	if (!p || len == 0) return false;
+	MEMORY_BASIC_INFORMATION mbi{};
+	const unsigned char* addr = static_cast<const unsigned char*>(p);
+	size_t remaining = len;
+	while (remaining)
+	{
+		if (!VirtualQuery(addr, &mbi, sizeof(mbi)))
+			return false;
+		if (mbi.State != MEM_COMMIT)
+			return false;
+		if (!(mbi.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)))
+			return false;
+		size_t chunk = std::min(remaining, static_cast<size_t>(reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize - reinterpret_cast<uintptr_t>(addr)));
+		addr += chunk;
+		remaining -= chunk;
+	}
+	return true;
+}
+
 
 #define LOG_FIELD_H(type, field) LOG(INFO) << "\t" << #field << ": " << HEX((node->GetData<type>().field));
 #define LOG_FIELD(type, field) LOG(INFO) << "\t" << #field << ": " << ((node->GetData<type>().field));
@@ -47,15 +72,30 @@
 	          << " Y: " << ((node->GetData<type>().field)).y << " Z: " << ((node->GetData<type>().field)).z \
 	          << " W: " << ((node->GetData<type>().field)).w;
 #define LOG_FIELD_APPLY(type, field, func) LOG(INFO) << "\t" << #field << ": " << func((node->GetData<type>().field));
-#define LOG_FIELD_UNDOCUM(num, type) \
-	LOG(INFO) << "\tFIELD_" << #num << ": " << *(type*)((&node->GetData<char>()) + num);
-#define LOG_FIELD_UNDOCUM_C(num, type) \
-	LOG(INFO) << "\tFIELD_" << #num << ": " << (int)*(type*)((&node->GetData<char>()) + num);
+#define LOG_FIELD_UNDOCUM(num, type)                                                                                   \
+	do {                                                                                                                  \
+		auto basePtr = (&node->GetData<char>());                                                                           \
+		auto ptr = basePtr + (num);                                                                                        \
+		if (IsReadable(ptr, sizeof(type)))                                                                                \
+			LOG(INFO) << "\tFIELD_" << #num << ": " << *(type*)ptr;                                                       \
+		else                                                                                                              \
+			LOG(INFO) << "\tFIELD_" << #num << ": <unreadable>";                                                         \
+	} while (0)
+#define LOG_FIELD_UNDOCUM_C(num, type)                                                                                \
+	do {                                                                                                                  \
+		auto basePtr = (&node->GetData<char>());                                                                           \
+		auto ptr = basePtr + (num);                                                                                        \
+		if (IsReadable(ptr, sizeof(type)))                                                                                \
+			LOG(INFO) << "\tFIELD_" << #num << ": " << (int)*(type*)ptr;                                                  \
+		else                                                                                                              \
+			LOG(INFO) << "\tFIELD_" << #num << ": <unreadable>";                                                         \
+	} while (0)
 
 namespace YimMenu::Hooks
 {
 	void Protections::LogSyncNode(CProjectBaseSyncDataNode* node, SyncNodeId& id, NetObjType type, rage::netObject* object, Player& player)
 	{
+
 		// targeted crash protection based on .map analysis - prevent null pointer dereference
 		if (!node)
 		{
@@ -65,9 +105,30 @@ namespace YimMenu::Hooks
 
 		if (!object)
 		{
-			LOG(WARNING) << "LogSyncNode: Blocked null object pointer";
+			// note: null object can be legitimate during creation queue; just log and attribute to player if known
+			if (player)
+			{
+				LOGF(SYNC, WARNING, "LogSyncNode: Blocked null object pointer (from {})", player.GetName());
+				// detect flood of null-object nodes from a single player and quarantine briefly
+				if (player.GetData().m_NullObjectLogRateLimit.Process() && player.GetData().m_NullObjectLogRateLimit.ExceededLastProcess())
+				{
+					player.GetData().QuarantineFor(std::chrono::seconds(10));
+					LOGF(SYNC, WARNING, "Quarantined {} for null-object node flood", player.GetName());
+				}
+			}
+			else
+			{
+				LOG(WARNING) << "LogSyncNode: Blocked null object pointer (from unknown)";
+			}
 			return;
 		}
+			// validate object memory readability to avoid AV on crafted pointers
+			if (!IsReadable(object, sizeof(*object)) || !IsReadable(&object->m_ObjectId, sizeof(object->m_ObjectId)))
+			{
+				LOG(WARNING) << "LogSyncNode: Unreadable object memory; skipping";
+				return;
+			}
+
 
 		// validate player before accessing
 		if (!player.IsValid())
@@ -131,12 +192,26 @@ namespace YimMenu::Hooks
 			LOG_FIELD(CVehicleProximityMigrationData, m_UnkAmount);
 			break;
 		case "CPedTaskTreeNode"_J:
+		{
+			auto& d = node->GetData<CPedTaskTreeData>();
+			// first tree type
 			LOG_FIELD(CPedTaskTreeData, m_Trees[0].m_TreeType);
-			for (int i = 0; i < node->GetData<CPedTaskTreeData>().GetNumTaskTrees(); i++)
+			int trees = std::min(d.GetNumTaskTrees(), 8);
+			for (int i = 0; i < trees; ++i)
 			{
 				LOG_FIELD(CPedTaskTreeData, m_Trees[i].m_NumTasks);
 				LOG_FIELD_B(CPedTaskTreeData, m_Trees[i].m_SequenceTree);
-				for (int j = 0; j < node->GetData<CPedTaskTreeData>().m_Trees[i].m_NumTasks; j++)
+				int num = d.m_Trees[i].m_NumTasks;
+				int maxRead = std::min(num, 16);
+				if (maxRead > 0)
+				{
+					if (!IsReadable(&d.m_Trees[i].m_Tasks[0], size_t(maxRead) * sizeof(d.m_Trees[i].m_Tasks[0])))
+					{
+						LOG(WARNING) << "LogSyncNode: task array unreadable; skipping tasks";
+						maxRead = 0;
+					}
+				}
+				for (int j = 0; j < maxRead; ++j)
 				{
 					LOG_FIELD(CPedTaskTreeData, m_Trees[i].m_Tasks[j].m_TaskType);
 					LOG_FIELD(CPedTaskTreeData, m_Trees[i].m_Tasks[j].m_TaskUnk1);
@@ -145,8 +220,23 @@ namespace YimMenu::Hooks
 					LOG_FIELD(CPedTaskTreeData, m_Trees[i].m_Tasks[j].m_TaskTreeDepth);
 				}
 			}
-			LOG_FIELD_H(CPedTaskTreeData, m_ScriptCommand);
-			LOG_FIELD(CPedTaskTreeData, m_ScriptTaskStage);
+			if (IsReadable(&d.m_ScriptCommand, sizeof(d.m_ScriptCommand)))
+			{
+				LOG_FIELD_H(CPedTaskTreeData, m_ScriptCommand);
+			}
+			else
+			{
+				LOG(INFO) << "\tm_ScriptCommand: <unreadable>";
+			}
+			if (IsReadable(&d.m_ScriptTaskStage, sizeof(d.m_ScriptTaskStage)))
+			{
+				LOG_FIELD(CPedTaskTreeData, m_ScriptTaskStage);
+			}
+			else
+			{
+				LOG(INFO) << "\tm_ScriptTaskStage: <unreadable>";
+			}
+		}
 			break;
 		case "CPedAttachNode"_J:
 			LOG_FIELD_B(CPedAttachData, m_IsAttached);
@@ -680,7 +770,7 @@ namespace YimMenu::Hooks
 				LOG_FIELD_UNDOCUM(36 * i + 72, uint32_t);
 			}
 			break;
-		case "CDraftVehGameStateNode"_J: 
+		case "CDraftVehGameStateNode"_J:
 			LOG_FIELD_UNDOCUM_C(0, char);
 			LOG_FIELD_UNDOCUM_C(1, char);
 			LOG_FIELD_UNDOCUM_C(2, char);
@@ -714,5 +804,6 @@ namespace YimMenu::Hooks
 			LOG_FIELD_UNDOCUM_C(48, char);
 			break;
 		}
+
 	}
 }

@@ -230,6 +230,50 @@ namespace YimMenu::Hooks
 			LogFrame(frame);
 		}
 
+			// protect against malicious route-change control messages causing isolation (empty session)
+			// block if coming from a peer (player resolved) rather than the server
+			if (player && (((int)msg_type) == 0x92 || ((int)msg_type) == 0x93 || ((int)msg_type) == 0x94))
+			{
+				// small frames are highly suspicious here; attackers use tiny payloads (e.g., sz=14)
+				if (frame->m_Length <= 32)
+				{
+					YimMenu::Player p(player->m_NetGamePlayer);
+					LOGF(SYNC, WARNING, "Blocking NET_ROUTE_CHANGE (0x{:X}) [sz: {}] from {} to prevent isolation", (int)msg_type, frame->m_Length, p ? p.GetName() : "unknown");
+					if (p)
+						p.GetData().QuarantineFor(std::chrono::seconds(10));
+					return true; // drop
+				}
+			}
+
+				// block peer-originated session-management control that can isolate the local player
+				// these messages should only come from the backend, never from another peer
+				if (player)
+				{
+					int mt = static_cast<int>(msg_type);
+					switch (mt)
+					{
+						case 0x62: /* ADD_GAMER_TO_SESSION_CMD */
+						case 0x64: /* REMOVE_GAMERS_FROM_SESSION_CMD */
+						case 0x65: /* MIGRATE_HOST_REQUEST */
+						case 0x66: /* MIGRATE_HOST_RESPONSE */
+						case 0x67: /* SESSION_MEMBERS */
+						case 0x36: /* SESSION_INFO */
+						case 0x37: /* SESSION_INFO_RESPONSE */
+						case 0x38: /* SESSION_JOIN_REQUEST */
+						case 0x39: /* SESSION_JOIN_REQUEST_RESPONSE */
+						case 0x63: /* HOST_LEFT_WHILST_JOINING_CMD */
+						{
+							YimMenu::Player p(player->m_NetGamePlayer);
+							LOGF(SYNC, WARNING, "Blocking peer-originated session-control msg 0x{:X} [sz: {}] from {} to prevent isolation", mt, frame->m_Length, p ? p.GetName() : "unknown");
+							if (p)
+								p.GetData().QuarantineFor(std::chrono::seconds(10));
+							return true;
+						}
+						default: break;
+					}
+				}
+
+
 		switch (msg_type)
 		{
 		case NetMessageType::TEXT_CHAT:
