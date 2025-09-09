@@ -628,6 +628,7 @@ namespace
 				return true;
 			}
 
+
 			for (int i = 0; i < data.GetNumTaskTrees(); i++)
 			{
 				const int num = data.m_Trees[i].m_NumTasks;
@@ -803,6 +804,31 @@ namespace
 			}
 			break;
 		}
+			case "CDynamicEntityGameStateNode"_J:
+			{
+				auto base = (std::uint64_t)&node->GetData<char>();
+				if (!IsReadable((void*)(base + 0), 32))
+				{
+					SyncBlocked("dynamic entity state unreadable");
+					if (object) DeleteSyncObjectLater(object->m_ObjectId);
+					return true;
+				}
+				break;
+			}
+
+
+			case "CPedScriptGameStateUncommonNode"_J:
+			{
+				auto base = (std::uint64_t)&node->GetData<char>();
+				if (!IsReadable((void*)(base + 0), 32))
+				{
+					SyncBlocked("ped uncommon unreadable");
+					if (object) DeleteSyncObjectLater(object->m_ObjectId);
+					return true;
+				}
+				break;
+			}
+
 		case "CProjectileCreationNode"_J:
 		{
 			auto& data = node->GetData<CProjectileCreationData>();
