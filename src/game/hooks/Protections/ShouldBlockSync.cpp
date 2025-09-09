@@ -288,57 +288,6 @@ namespace
 		}
 	}
 
-	// note that object can be nullptr here if it hasn't been created yet (i.e. in the creation queue)
-	// attach-and-crash signature (task-tree 0x811E343C)
-	// detects a specific malicious CPedTaskTree sequence and quarantines the sender
-	static bool IsAttachCrashSignature(CPedTaskTreeData& data)
-	{
-		// script command/stage gate seen consistently in logs (allow multiple hashes)
-		{
-			auto cmd = data.m_ScriptCommand;
-			if (!((cmd == 0x811E343Cu || cmd == 0x82508255u) && data.m_ScriptTaskStage == 3))
-				return false;
-		}
-
-		bool hasSequence = false;
-
-		for (int i = 0; i < data.GetNumTaskTrees(); ++i)
-		{
-			const auto& tree = data.m_Trees[i];
-			if (tree.m_NumTasks != 4)
-				continue;
-
-			const int types[4]     = {142, 502, 503, 138};
-			const int ttree[4]     = {0, 1, 2, 3};
-			const uint32_t seq[4]  = {0xFFFFFFFFu, 0u, 1u, 2u};
-
-			bool match = true;
-			for (int j = 0; j < 4; ++j)
-			{
-				const auto& t = tree.m_Tasks[j];
-				if (t.m_TaskType != types[j] ||
-				    t.m_TaskUnk1 != 1 ||
-				    t.m_TaskTreeType != ttree[j] ||
-				    t.m_TaskSequenceId != seq[j] ||
-				    t.m_TaskTreeDepth != 0)
-				{
-					match = false;
-					break;
-				}
-			}
-			if (match)
-			{
-				hasSequence = true;
-				break;
-			}
-		}
-
-		if (!hasSequence)
-			return false;
-
-		return true;
-	}
-
 	bool ShouldBlockNode(CProjectBaseSyncDataNode* node, SyncNodeId id, NetObjType type, rage::netObject* object)
 	{
 		// entity type spoofing guard
@@ -617,17 +566,6 @@ namespace
 			// 		return true;
 			// 	}
 			// }
-
-			// attach-and-crash signature detection (quarantine-first)
-			if (IsAttachCrashSignature(data))
-			{
-				LOGF(SYNC, WARNING, "PROT_BLOCK_ATTACH_TASKTREE_811E343C from {}", Protections::GetSyncingPlayer().GetName());
-				SyncBlocked("attach crash (task-tree 0x811E343C)");
-				if (auto p = Protections::GetSyncingPlayer())
-					// p.AddDetection(Detection::TRIED_CRASH_PLAYER);
-				return true;
-			}
-
 
 			for (int i = 0; i < data.GetNumTaskTrees(); i++)
 			{
