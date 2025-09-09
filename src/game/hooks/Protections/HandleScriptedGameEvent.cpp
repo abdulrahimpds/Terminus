@@ -31,6 +31,13 @@ namespace YimMenu::Hooks
 {
 	bool Protections::HandleScriptedGameEvent(CScriptedGameEvent* event, CNetGamePlayer* src, CNetGamePlayer* dst)
 	{
+		// quarantine gate: if sender is quarantined, drop silently
+		if (src)
+		{
+			auto p = Player(src);
+			if (p && p.GetData().IsSyncsBlocked())
+				return true;
+		}
 		if (Features::_LogScriptEvents.GetState())
 		{
 			std::string script_args = "{ ";

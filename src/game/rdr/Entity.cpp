@@ -203,6 +203,11 @@ namespace YimMenu
 	void Entity::SetCollision(bool enabled)
 	{
 		ENTITY_ASSERT_VALID();
+		// hard safety: abort if entity is invalid or we don't have control
+		if (!IsValid())
+			return;
+		if (!HasControl())
+			return;
 		ENTITY_ASSERT_CONTROL();
 		ENTITY::SET_ENTITY_COLLISION(GetHandle(), enabled, true);
 	}
@@ -210,6 +215,11 @@ namespace YimMenu
 	void Entity::SetFrozen(bool enabled)
 	{
 		ENTITY_ASSERT_VALID();
+		// hard safety: abort if entity is invalid or we don't have control
+		if (!IsValid())
+			return;
+		if (!HasControl())
+			return;
 		ENTITY_ASSERT_CONTROL();
 		ENTITY::FREEZE_ENTITY_POSITION(GetHandle(), enabled);
 	}

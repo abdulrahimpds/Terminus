@@ -3,6 +3,7 @@
 #include "game/backend/Self.hpp"
 #include "core/frontend/Notifications.hpp"
 #include "game/backend/FiberPool.hpp"
+#include "game/backend/Players.hpp"
 
 #include <network/CNetGamePlayer.hpp>
 #include <player/CPlayerInfo.hpp>
@@ -14,6 +15,9 @@ namespace YimMenu::Hooks
 		if (Self::GetPed() && Self::GetPed().GetNetworkObjectId() == objectId)
 		{
 			Notifications::Show("Protections", std::format("Blocked player ped removal crash from {}", sender->GetName()), NotificationType::Warning);
+			// quarantine the sender briefly to stop repeated attempts
+			if (sender)
+				Player(sender).GetData().QuarantineFor(std::chrono::seconds(10));
 			return 0;
 		}
 
@@ -25,6 +29,8 @@ namespace YimMenu::Hooks
 			});
 
 			Notifications::Show("Protections", std::format("Blocked delete mount from {}", sender->GetName()), NotificationType::Warning);
+			if (sender)
+				Player(sender).GetData().QuarantineFor(std::chrono::seconds(10));
 			return 0;
 		}
 
@@ -36,6 +42,8 @@ namespace YimMenu::Hooks
 			});
 
 			Notifications::Show("Protections", std::format("Blocked delete vehicle from {}", sender->GetName()), NotificationType::Warning);
+			if (sender)
+				Player(sender).GetData().QuarantineFor(std::chrono::seconds(10));
 			return 0;
 		}
 

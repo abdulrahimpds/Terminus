@@ -1017,6 +1017,19 @@ namespace
 				break;
 			}
 
+			case "Node_14359d020"_J:
+			{
+				// conservative guard for frequent player sync node to prevent malformed payload crashes
+				auto base = (std::uint64_t)&node->GetData<char>();
+				if (!IsReadable((void*)(base + 0), 64))
+				{
+					SyncBlocked("player state unreadable");
+					if (object) DeleteSyncObjectLater(object->m_ObjectId);
+					return true;
+				}
+				break;
+			}
+
 		case "CAnimSceneCreationNode"_J:
 		{
 			auto& data = node->GetData<CAnimSceneCreationData>();

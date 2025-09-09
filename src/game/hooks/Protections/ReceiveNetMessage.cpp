@@ -207,23 +207,10 @@ namespace YimMenu::Hooks
 
 		if (!GetMessageType(msg_type, buffer))
 		{
-			// invalid net message (NT crash vector). quarantine and drop.
-			if (auto qp = Players::GetByMessageId(frame->m_MsgId))
-			{
-				qp.GetData().QuarantineFor(std::chrono::seconds(10));
-			}
-			return true; // drop invalid
+			// pass to original handler to match base behavior for unknown frames
+			return CallOrig_SEH(orig, a1, ncm, frame);
 		}
 
-		// additional sanity: message id must be in reasonable range
-		if ((int)msg_type == (int)NetMessageType::INVALID || (int)msg_type > 0xFF)
-		{
-			if (auto qp = Players::GetByMessageId(frame->m_MsgId))
-			{
-				qp.GetData().QuarantineFor(std::chrono::seconds(10));
-			}
-			return true;
-		}
 
 		if (Features::_LogPackets.GetState())
 		{
@@ -278,15 +265,6 @@ namespace YimMenu::Hooks
 		}
 		case NetMessageType::CONNECT_REQUEST:
 		{
-			// NT crash mitigation: filter bad sizes and impossible contexts early
-			if (frame->m_Length != 14)
-			{
-				if (Features::_LogPackets.GetState())
-					LOGF(VERBOSE, "Dropped CONNECT_REQUEST with unexpected size {}", frame->m_Length);
-				if (auto qp = Players::GetByMessageId(frame->m_MsgId))
-					qp.GetData().QuarantineFor(std::chrono::seconds(10));
-				return true;
-			}
 			// if session is already started and lobby lock is on, deny
 			if (*Pointers.IsSessionStarted && Features::_LockLobby.GetState())
 			{
@@ -374,6 +352,40 @@ namespace YimMenu::Hooks
 				if (Features::_LogPackets.GetState())
 					LOGF(VERBOSE, "Dropped READY_FOR_GAME_SYNC_ACK with unexpected size {}", frame->m_Length);
 				return true; // drop malformed ACK (prevents NT crash)
+			}
+			break;
+		}
+
+		// control-plane traffic sanity (prevent malformed/fuzzed frames from stalling network)
+		case NetMessageType::REASSIGN_NEGOTIATE:
+		case NetMessageType::REASSIGN_RESPONSE:
+		case NetMessageType::REASSIGN_CONFIRM:
+		{
+			// observed legitimate sizes are small (15/18/22/30/34). allow generous upper bound.
+			if (frame->m_Length > 64 || frame->m_Length != 3)
+			{
+				if (Features::_LogPackets.GetState())
+					LOGF(VERBOSE, "Dropped %s with unexpected size %d",
+						(msg_type == NetMessageType::REASSIGN_NEGOTIATE ? "REASSIGN_NEGOTIATE" :
+						(msg_type == NetMessageType::REASSIGN_RESPONSE ? "REASSIGN_RESPONSE" : "REASSIGN_CONFIRM")),
+						frame->m_Length);
+				if (auto qp = Players::GetByMessageId(frame->m_MsgId))
+					qp.GetData().QuarantineFor(std::chrono::seconds(10));
+				return true;
+			}
+			break;
+		}
+
+		case NetMessageType::SCRIPT_HANDSHAKE_ACK:
+		{
+			// typical size is 12; allow moderate cap to absorb variations but block gross fuzzing
+			if (frame->m_Length > 64)
+			{
+				if (Features::_LogPackets.GetState())
+					LOGF(VERBOSE, "Dropped SCRIPT_HANDSHAKE_ACK with unexpected size {}", frame->m_Length);
+				if (auto qp = Players::GetByMessageId(frame->m_MsgId))
+					qp.GetData().QuarantineFor(std::chrono::seconds(10));
+				return true;
 			}
 			break;
 		}
