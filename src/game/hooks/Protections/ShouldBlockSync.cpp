@@ -406,9 +406,8 @@ namespace
 
 			if (data.m_ModelHash && (g_FishModels.count(data.m_ModelHash) || g_BirdModels.count(data.m_ModelHash)))
 			{
-				// TODO
-				LOGF(SYNC, WARNING, "Prevented {} from using animal model 0x{:X} to prevent potential task crashes", Protections::GetSyncingPlayer().GetName(), data.m_ModelHash);
-				// data.m_ModelHash = "MP_MALE"_J;
+				LOGF(SYNC, WARNING, "Replacing animal model 0x{:X} from {} with MP_MALE to prevent potential task crashes", data.m_ModelHash, Protections::GetSyncingPlayer().GetName());
+				data.m_ModelHash = "MP_MALE"_J;
 			}
 
 			CheckPlayerModel(Protections::GetSyncingPlayer().GetHandle(), data.m_ModelHash);
@@ -738,6 +737,11 @@ namespace
 				SyncBlocked("invalid player creation crash");
 				Protections::GetSyncingPlayer().AddDetection(Detection::TRIED_CRASH_PLAYER);
 				// fix the crash instead of rejecting sync
+				data.m_Hash = "MP_MALE"_J;
+			}
+			else if (g_FishModels.count(data.m_Hash) || g_BirdModels.count(data.m_Hash))
+			{
+				LOGF(SYNC, WARNING, "Replacing animal player creation model 0x{:X} from {} with MP_MALE to prevent potential task crashes", data.m_Hash, Protections::GetSyncingPlayer().GetName());
 				data.m_Hash = "MP_MALE"_J;
 			}
 			break;
