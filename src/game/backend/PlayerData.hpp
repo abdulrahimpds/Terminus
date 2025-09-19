@@ -65,6 +65,8 @@ namespace YimMenu
 		RateLimiter m_GhostEventRateLimit{3s, 5};
 		// per-event rate limiters to suppress valid-but-spammed events
 		RateLimiter m_ClearTasksRateLimit{2s, 4};
+		// give-control flood limiter (host/control spam) — allow high burst to avoid false positives
+		RateLimiter m_GiveControlRateLimit{1s, 20};
 
 		// draft-vehicle control spam limiter
 		RateLimiter m_DraftVehControlRateLimit{2s, 8};

@@ -258,6 +258,15 @@ namespace YimMenu::Hooks
 
 		if (type == NetEventType::GIVE_CONTROL_EVENT && sourcePlayer)
 		{
+			// rate-limit give-control storms; quarantine abusive senders to prevent session faults
+			auto p = Player(sourcePlayer);
+			if (p.GetData().m_GiveControlRateLimit.Process() && p.GetData().m_GiveControlRateLimit.ExceededLastProcess())
+			{
+				LOGF(NET_EVENT, WARNING, "Blocked give-control spam from {}", sourcePlayer->GetName());
+				p.GetData().QuarantineFor(std::chrono::seconds(30));
+				Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
+				return;
+			}
 			YimMenu::Protections::SetSyncingPlayer(sourcePlayer);
 		}
 
