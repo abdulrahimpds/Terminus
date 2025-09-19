@@ -109,11 +109,16 @@ namespace YimMenu::Hooks
 			if (player)
 			{
 				LOGF(SYNC, WARNING, "LogSyncNode: Blocked null object pointer (from {})", player.GetName());
-				// detect flood of null-object nodes from a single player and quarantine briefly
+				// detect flood of null-object nodes from a single player and quarantine with escalation
 				if (player.GetData().m_NullObjectLogRateLimit.Process() && player.GetData().m_NullObjectLogRateLimit.ExceededLastProcess())
 				{
-					player.GetData().QuarantineFor(std::chrono::seconds(10));
-					LOGF(SYNC, WARNING, "Quarantined {} for null-object node flood", player.GetName());
+					auto& pd = player.GetData();
+					pd.m_LastNullObjectFloodAt = std::chrono::steady_clock::now();
+					pd.m_NullObjectFloodStrikes++;
+					const bool escalate = pd.m_NullObjectFloodStrikes >= 2; // second strike -> longer block
+					const auto dur = escalate ? std::chrono::seconds(300) : std::chrono::seconds(60);
+					pd.QuarantineFor(dur);
+					LOGF(SYNC, WARNING, "Quarantined {} for null-object node flood ({} strike, {}s)", player.GetName(), pd.m_NullObjectFloodStrikes, (int)dur.count());
 				}
 			}
 			else

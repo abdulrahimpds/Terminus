@@ -49,7 +49,8 @@ namespace YimMenu
 		RateLimiter m_WeaponDamageRateLimit{2s, 6};
 		RateLimiter m_TrainEventRateLimit{10s, 3};
 		RateLimiter m_AttachRateLimit{2s, 4};
-		// rate limiter for task-tree updates (valid-triple flood protection)
+		// rate limiter for projectile creation (valid weapon spam / invisible shooters)
+		RateLimiter m_ProjectileCreateRateLimit{1s, 10};
 		// rate limiter for null-object sync logging (detect flood of null object nodes)
 		RateLimiter m_NullObjectLogRateLimit{2s, 60};
 
@@ -64,6 +65,13 @@ namespace YimMenu
 		RateLimiter m_GhostEventRateLimit{3s, 5};
 		// per-event rate limiters to suppress valid-but-spammed events
 		RateLimiter m_ClearTasksRateLimit{2s, 4};
+
+		// draft-vehicle control spam limiter
+		RateLimiter m_DraftVehControlRateLimit{2s, 8};
+
+		// recent null-object flood metadata for escalation logic
+		std::chrono::steady_clock::time_point m_LastNullObjectFloodAt{};
+		int m_NullObjectFloodStrikes{};
 
 		std::optional<std::uint64_t> m_PeerIdToSpoofTo{};
 	};

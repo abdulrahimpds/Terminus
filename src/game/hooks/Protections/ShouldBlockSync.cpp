@@ -16,6 +16,7 @@
 #include "game/backend/CrashSignatures.hpp"
 #include <format>
 #include <algorithm>
+#include <chrono>
 
 #include <network/CNetGamePlayer.hpp>
 #include <network/CNetworkScSession.hpp>
@@ -279,7 +280,7 @@ namespace
 			return type == NetObjType::WorldProjectile;
 		case "CVehicleCreationNode"_J:
 			return type == NetObjType::DraftVeh || type == NetObjType::Boat;
-		case "CDraftVehCreationNodeThing"_J:
+		case "CDraftVehCreationNode"_J:
 			return type == NetObjType::DraftVeh;
 
 		// for state/attach/migration nodes we default-allow and let targeted logic handle abuse
@@ -501,23 +502,29 @@ namespace
 					}
 				}
 
-				if (targetingUs && Features::_BlockAttachments.GetState())
+				// always block attachments that target us, regardless of the feature toggle
+				if (targetingUs)
 				{
 					SyncBlocked("attachment", GetObjectCreator(object));
 					if (sp)
 						sp.AddDetection(Detection::TRIED_ATTACH);
 
+					// if the node's owning object is not our player, remove it; otherwise force-detach ourselves on their end
 					if (object && object->m_ObjectType != (int)NetObjType::Player)
 					{
 						DeleteSyncObject(object->m_ObjectId);
-						return true;
 					}
-					else
+					else if (local && local->m_NetObject)
 					{
-						// force detach by deleting our ped on the attacker's end
 						Network::ForceRemoveNetworkEntity(local->m_NetObject->m_ObjectId, -1, false, Protections::GetSyncingPlayer());
-						data.m_IsAttached = false;
 					}
+					// additionally, if the attach target id is valid, try removing it to guarantee detachment (e.g., draft veh/wagon)
+					if (data.m_IsAttached && data.m_AttachObjectId != 0 && data.m_AttachObjectId != (int)0xFFFF)
+					{
+						DeleteSyncObject(data.m_AttachObjectId);
+					}
+					data.m_IsAttached = false;
+					return true;
 				}
 
 				// trailer-specific crash: block trailer attachments to any of our assets
@@ -531,6 +538,67 @@ namespace
 			}
 			break;
 		}
+
+		case "CPedStandingOnObjectNode"_J:
+		{
+			// if a remote player tries to set our ped as standing on an object (e.g., draft vehicle platform), block it
+			auto local = Pointers.GetLocalPed();
+			if (local && local->m_NetObject && object && object->m_ObjectType == (uint16_t)NetObjType::Player && object->m_ObjectId == local->m_NetObject->m_ObjectId)
+			{
+				LOGF(SYNC, WARNING, "Blocking CPedStandingOnObjectNode targeting local ped from {}", Protections::GetSyncingPlayer().GetName());
+				SyncBlocked("standing on object targeting local");
+				return true;
+			}
+			break;
+		}
+
+		// weapon node hardening: after any recent null-object flood or active quarantine, drop weapon/control updates
+		case "CPedWeaponNode"_J:
+		{
+			auto p = Protections::GetSyncingPlayer();
+			if (p)
+			{
+				auto& pd = p.GetData();
+				const auto now = std::chrono::steady_clock::now();
+				const bool recent_null_flood = pd.m_LastNullObjectFloodAt.time_since_epoch().count() != 0 && (now - pd.m_LastNullObjectFloodAt) < std::chrono::seconds(30);
+				if (pd.IsSyncsBlocked() || recent_null_flood)
+				{
+					LOGF(SYNC, WARNING, "Blocking CPedWeaponNode from {} due to recent null-object flood/quarantine", p.GetName());
+					SyncBlocked("weapon node after null-object flood");
+					if (object && object->m_ObjectType != (int)NetObjType::Player)
+					{
+						DeleteSyncObject(object->m_ObjectId);
+					}
+					return true;
+				}
+			}
+			break;
+		}
+
+		// draft-vehicle control hardening: rate-limit and block during/after suspicious activity
+		case "CDraftVehControlNode"_J:
+		{
+			auto p = Protections::GetSyncingPlayer();
+			if (p)
+			{
+				auto& pd = p.GetData();
+				const auto now = std::chrono::steady_clock::now();
+				const bool recent_null_flood = pd.m_LastNullObjectFloodAt.time_since_epoch().count() != 0 && (now - pd.m_LastNullObjectFloodAt) < std::chrono::seconds(30);
+				bool exceeded = pd.m_DraftVehControlRateLimit.Process() && pd.m_DraftVehControlRateLimit.ExceededLastProcess();
+				if (pd.IsSyncsBlocked() || recent_null_flood || exceeded)
+				{
+					LOGF(SYNC, WARNING, "Blocking CDraftVehControlNode from {} (quarantine/recent null-flood/excessive control)", p.GetName());
+					SyncBlocked("draft vehicle control abuse");
+					if (object && object->m_ObjectType == (int)NetObjType::DraftVeh)
+					{
+						DeleteSyncObject(object->m_ObjectId);
+					}
+					return true;
+				}
+			}
+			break;
+		}
+
 		case "CVehicleProximityMigrationNode"_J:
 		{
 			auto& data = node->GetData<CVehicleProximityMigrationData>();
@@ -569,7 +637,13 @@ namespace
 			for (int i = 0; i < data.GetNumTaskTrees(); i++)
 			{
 				const int num = data.m_Trees[i].m_NumTasks;
-				const int maxRead = std::min(num, 16);
+				const int maxRead = std::min(num, 64);
+				// if attacker packs too many tasks, quarantine to suppress follow-ups
+				if (num > 64)
+				{
+					if (auto qp = Protections::GetSyncingPlayer())
+						qp.GetData().QuarantineFor(std::chrono::seconds(60));
+				}
 
 				if (maxRead > 0)
 				{
@@ -590,6 +664,9 @@ namespace
 					{
 						LOGF(SYNC, WARNING, "Blocking non-whitelisted task triple (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
 						SyncBlocked("task whitelist");
+						// proactively quarantine to prevent immediate retries chaining into a crash
+						if (auto qp = Protections::GetSyncingPlayer())
+							qp.GetData().QuarantineFor(std::chrono::seconds(60));
 						//if (object) DeleteSyncObjectLater(object->m_ObjectId);
 						return true;
 					}
@@ -693,17 +770,17 @@ namespace
 			}
 			break;
 		}
-		// case "CProjectileAttachNode"_J:
-		// {
-		// 	// conservative guard: delete projectile if an attach node tries to bind it (common crash vector)
-		// 	if (object && object->m_ObjectType == (uint16_t)NetObjType::WorldProjectile)
-		// 	{
-		// 		SyncBlocked("projectile attachment");
-		// 		DeleteSyncObject(object->m_ObjectId);
-		// 		return true;
-		// 	}
-		// 	break;
-		// }
+		case "CProjectileAttachNode"_J:
+		{
+			// conservative guard: delete projectile if an attach node tries to bind it (common crash vector)
+			if (object && object->m_ObjectType == (uint16_t)NetObjType::WorldProjectile)
+			{
+				SyncBlocked("projectile attachment");
+				DeleteSyncObject(object->m_ObjectId);
+				return true;
+			}
+			break;
+		}
 		case "CPropSetCreationNode"_J:
 		{
 			auto& data = node->GetData<CPropSetCreationData>();
@@ -774,6 +851,21 @@ namespace
 		case "CProjectileCreationNode"_J:
 		{
 			auto& data = node->GetData<CProjectileCreationData>();
+			// rate-limit and block during quarantine or recent null-flood
+			if (auto p = Protections::GetSyncingPlayer())
+			{
+				auto& pd = p.GetData();
+				const auto now = std::chrono::steady_clock::now();
+				const bool recent_null_flood = pd.m_LastNullObjectFloodAt.time_since_epoch().count() != 0 && (now - pd.m_LastNullObjectFloodAt) < std::chrono::seconds(30);
+				bool exceeded = pd.m_ProjectileCreateRateLimit.Process() && pd.m_ProjectileCreateRateLimit.ExceededLastProcess();
+				if (pd.IsSyncsBlocked() || recent_null_flood || exceeded)
+				{
+					SyncBlocked("projectile spam/quarantine");
+					if (object && object->m_ObjectType == (uint16_t)NetObjType::WorldProjectile)
+						DeleteSyncObject(object->m_ObjectId);
+					return true;
+				}
+			}
 			if (!WEAPON::IS_WEAPON_VALID(data.m_WeaponHash))
 			{
 				LOGF(SYNC, WARNING, "Blocking projectile with invalid weapon hash 0x{:X} from {}", data.m_WeaponHash, Protections::GetSyncingPlayer().GetName());
