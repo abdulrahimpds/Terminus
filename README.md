@@ -26,7 +26,12 @@ This project is a fork of YimMenu/HorseMenu: https://github.com/YimMenu/HorseMen
 
 ## Enhancements in this fork
 
-- updated spawner by including all the peds and organizing them into sections
-- improved protections and overall stability (excludes any commented-out experimental paths)
-- fixed bugs, including the previously missing horse godmode
-- improved companion logic and spawner settings, including an "Armed" checkbox
+- Spawners
+  - complete Ped list organized into logical sections; includes special variants where applicable
+  - improved companion flow and settings, including an "Armed" checkbox
+  - fixed horse godmode and related persistence edge cases
+- Protection
+  - hardened task-tree validation: immediate quarantine on whitelist violation; increased scan depth (16 → 64) with defensive quarantine when exceeded
+  - safer pointer/range checks and clearer block/quarantine logging to aid incident analysis
+- General fixes
+  - multiple bug fixes and UI polish; experimental paths remain disabled by default to reduce false positives
