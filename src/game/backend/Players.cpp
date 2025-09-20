@@ -3,6 +3,9 @@
 #include "game/features/Features.hpp"
 #include "game/pointers/Pointers.hpp"
 #include "PlayerDatabase.hpp"
+#include "core/commands/Commands.hpp"
+#include "core/commands/BoolCommand.hpp"
+
 
 #include <network/CNetGamePlayer.hpp>
 #include <network/CNetworkPlayerMgr.hpp>
@@ -63,8 +66,43 @@ namespace YimMenu
 
 	void Players::OnPlayerLeaveImpl(CNetGamePlayer* player)
 	{
+		// remove from player maps
 		m_Players.erase(player->m_PlayerIndex);
-		m_PlayerDatas.erase(player->m_PlayerIndex);
+		bool was_logging = false;
+		if (auto it = m_PlayerDatas.find(player->m_PlayerIndex); it != m_PlayerDatas.end())
+		{
+			was_logging = it->second.m_Logging;
+			m_PlayerDatas.erase(it);
+		}
+		else
+		{
+			m_PlayerDatas.erase(player->m_PlayerIndex);
+		}
+
+		// if the departing player had logging enabled and there are no more
+		// players selected for logging, automatically toggle off logging features
+		if (was_logging)
+		{
+			bool any = false;
+			for (auto& [idx, data] : m_PlayerDatas)
+			{
+				if (data.m_Logging) { any = true; break; }
+			}
+			if (!any)
+			{
+				// turn off all logging-style debuggers globally (labels/names starting with "Log")
+				auto startsWithLog = [](const std::string& s) {
+					return s.size() >= 3 && (s[0] == 'l' || s[0] == 'L') && (s[1] == 'o' || s[1] == 'O') && (s[2] == 'g' || s[2] == 'G');
+				};
+				for (auto* bc : Commands::GetBoolCommands())
+				{
+					const auto& n = bc->GetName();
+					const auto& l = bc->GetLabel();
+					if ((startsWithLog(n) || startsWithLog(l)) && bc->GetState())
+						bc->SetState(false);
+				}
+			}
+		}
 	}
 
 	Player Players::GetByRIDImpl(uint64_t rid)

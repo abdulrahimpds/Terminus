@@ -59,6 +59,12 @@ namespace YimMenu
 			return GetInstance().m_LoopedCommands;
 		}
 
+		// expose all BoolCommand instances (for global toggling)
+		static std::vector<BoolCommand*>& GetBoolCommands()
+		{
+			return GetInstance().m_BoolCommands;
+		}
+
 		static void MarkDirty()
 		{
 			GetInstance().MarkStateDirty();
