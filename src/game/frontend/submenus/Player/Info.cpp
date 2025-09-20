@@ -46,6 +46,9 @@ namespace YimMenu::Submenus
 					}
 				}
 
+					ImGui::Checkbox("Logging", &Players::GetSelected().GetData().m_Logging);
+
+
 				ImGui::Text("Rank: %s", std::to_string(Players::GetSelected().GetRank()));
 
 				if (Players::GetSelected().GetPed())

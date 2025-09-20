@@ -3,6 +3,8 @@
 #include "game/backend/PlayerData.hpp"
 #include "game/backend/Protections.hpp"
 #include "game/backend/Self.hpp"
+#include "game/backend/Players.hpp"
+
 #include "game/hooks/Hooks.hpp"
 #include "game/pointers/Pointers.hpp"
 #include "game/rdr/Enums.hpp"
@@ -136,9 +138,9 @@ namespace YimMenu::Hooks
 			}
 		}
 
-		if (Features::_LogEvents.GetState() && (int)type < g_NetEventsToString.size())
+		if (Features::_LogEvents.GetState() && Players::ShouldLogFor(Player(sourcePlayer)) && (int)type < g_NetEventsToString.size())
 		{
-			LOG(INFO) << "NETWORK_EVENT: " << g_NetEventsToString[(int)type] << " from " << sourcePlayer->GetName();
+			LOG(INFO) << "NETWORK_EVENT: " << g_NetEventsToString[(int)type] << " from " << (sourcePlayer ? sourcePlayer->GetName() : "unknown");
 		}
 
 		if (type == NetEventType::NETWORK_DESTROY_VEHICLE_LOCK_EVENT)

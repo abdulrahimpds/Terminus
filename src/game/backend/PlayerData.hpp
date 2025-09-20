@@ -18,6 +18,8 @@ namespace YimMenu
 		bool m_BlockExplosions{};
 		bool m_BlockParticles{};
 		bool m_GhostMode{};
+		// per-player logging filter (when enabled, only log this player's traffic)
+		bool m_Logging{};
 
 		RateLimiter m_VehicleFloodLimit{10s, 10};
 		RateLimiter m_PedFloodLimit{10s, 25};

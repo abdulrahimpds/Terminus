@@ -38,7 +38,7 @@ namespace YimMenu::Hooks
 			if (p && p.GetData().IsSyncsBlocked())
 				return true;
 		}
-		if (Features::_LogScriptEvents.GetState())
+		if (Features::_LogScriptEvents.GetState() && Players::ShouldLogFor(Player(src)))
 		{
 			std::string script_args = "{ ";
 			for (std::size_t i = 0; i < event->m_DataSize / 8; i++)

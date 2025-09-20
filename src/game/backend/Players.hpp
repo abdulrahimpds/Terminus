@@ -56,6 +56,20 @@ namespace YimMenu
 			return GetInstance().m_PlayerDatas[idx];
 		}
 
+			// logging filter helper: if any players have logging enabled, only log for those; otherwise log all
+			static bool ShouldLogFor(Player player)
+			{
+				auto& inst = GetInstance();
+				bool any = false;
+				for (auto& [i, data] : inst.m_PlayerDatas)
+				{
+					if (data.m_Logging) { any = true; break; }
+				}
+				if (!any) return true; // no selection -> log everyone
+				return player && player.GetData().m_Logging;
+			}
+
+
 		static Player GetRandom()
 		{
 			auto& players = GetPlayers();

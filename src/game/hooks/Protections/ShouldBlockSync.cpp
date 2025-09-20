@@ -292,13 +292,13 @@ namespace
 	bool ShouldBlockNode(CProjectBaseSyncDataNode* node, SyncNodeId id, NetObjType type, rage::netObject* object)
 	{
 		// entity type spoofing guard
-		if (!IsNodeAllowedForType(id, type))
-		{
-			SyncBlocked("entity type spoofing");
-			if (object)
-				DeleteSyncObjectLater(object->m_ObjectId);
-			return true;
-		}
+		// if (!IsNodeAllowedForType(id, type))
+		// {
+		// 	SyncBlocked("entity type spoofing");
+		// 	if (object)
+		// 		DeleteSyncObjectLater(object->m_ObjectId);
+		// 	return true;
+		// }
 		switch (id)
 		{
 		case "CPedCreationNode"_J:
@@ -1059,7 +1059,7 @@ namespace
 				auto sid = Nodes::Find((uint64_t)node);
 
 			bool log_seh = false;
-			if (YimMenu::Features::_LogClones.GetState())
+			if (YimMenu::Features::_LogClones.GetState() && ::YimMenu::Players::ShouldLogFor(::YimMenu::Protections::GetSyncingPlayer()))
 				CallLogSyncNode_SEH(&LogSyncNode_Raw, node, type, object, &log_seh);
 			if (log_seh)
 			{
