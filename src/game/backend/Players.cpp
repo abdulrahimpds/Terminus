@@ -68,10 +68,9 @@ namespace YimMenu
 	{
 		// remove from player maps
 		m_Players.erase(player->m_PlayerIndex);
-		bool was_logging = false;
+		// erase player data
 		if (auto it = m_PlayerDatas.find(player->m_PlayerIndex); it != m_PlayerDatas.end())
 		{
-			was_logging = it->second.m_Logging;
 			m_PlayerDatas.erase(it);
 		}
 		else
@@ -79,9 +78,7 @@ namespace YimMenu
 			m_PlayerDatas.erase(player->m_PlayerIndex);
 		}
 
-		// if the departing player had logging enabled and there are no more
-		// players selected for logging, automatically toggle off logging features
-		if (was_logging)
+		// simplified: if no players have Logging checked, turn off all "Log ..." debuggers
 		{
 			bool any = false;
 			for (auto& [idx, data] : m_PlayerDatas)
@@ -90,7 +87,6 @@ namespace YimMenu
 			}
 			if (!any)
 			{
-				// turn off all logging-style debuggers globally (labels/names starting with "Log")
 				auto startsWithLog = [](const std::string& s) {
 					return s.size() >= 3 && (s[0] == 'l' || s[0] == 'L') && (s[1] == 'o' || s[1] == 'O') && (s[2] == 'g' || s[2] == 'G');
 				};

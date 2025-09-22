@@ -10,6 +10,9 @@
 
 #include <network/rlGamerInfo.hpp>
 
+#include "core/commands/Commands.hpp"
+#include "core/commands/BoolCommand.hpp"
+
 namespace YimMenu::Submenus
 {
 	std::string BuildIPStr(int field1, int field2, int field3, int field4)
@@ -46,7 +49,61 @@ namespace YimMenu::Submenus
 					}
 				}
 
-					ImGui::Checkbox("Logging", &Players::GetSelected().GetData().m_Logging);
+					{
+						bool prev_logging = Players::GetSelected().GetData().m_Logging;
+						if (ImGui::Checkbox("Logging", &Players::GetSelected().GetData().m_Logging))
+						{
+							bool now_logging = Players::GetSelected().GetData().m_Logging;
+							if (!prev_logging && now_logging)
+							{
+								bool any_other = false;
+								auto sel_id = Players::GetSelected().GetId();
+								for (auto& [idx, ply] : Players::GetPlayers())
+								{
+									if (idx != sel_id && ply.GetData().m_Logging) { any_other = true; break; }
+								}
+								if (!any_other)
+								{
+									auto enable_by_label = [](const char* label) {
+										for (auto* bc : Commands::GetBoolCommands())
+										{
+											if (bc->GetLabel() == label && !bc->GetState())
+											{
+												bc->SetState(true);
+												break;
+											}
+										}
+									};
+									enable_by_label("Log Incoming Clones");
+									enable_by_label("Log Network Events");
+									enable_by_label("Log Script Events");
+									enable_by_label("Log Packets");
+								}
+							}
+							else if (prev_logging && !now_logging)
+							{
+								bool any_other = false;
+								auto sel_id = Players::GetSelected().GetId();
+								for (auto& [idx, ply] : Players::GetPlayers())
+								{
+									if (idx != sel_id && ply.GetData().m_Logging) { any_other = true; break; }
+								}
+								if (!any_other)
+								{
+									auto startsWithLog = [](const std::string& s) {
+										return s.size() >= 3 && (s[0] == 'l' || s[0] == 'L') && (s[1] == 'o' || s[1] == 'O') && (s[2] == 'g' || s[2] == 'G');
+									};
+									for (auto* bc : Commands::GetBoolCommands())
+									{
+										const auto& n = bc->GetName();
+										const auto& l = bc->GetLabel();
+										if ((startsWithLog(n) || startsWithLog(l)) && bc->GetState())
+											bc->SetState(false);
+									}
+								}
+							}
+						}
+					}
 
 
 				ImGui::Text("Rank: %s", std::to_string(Players::GetSelected().GetRank()));
