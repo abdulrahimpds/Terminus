@@ -173,25 +173,6 @@ namespace YimMenu::Hooks
 				}
 			}
 		}
-			// quarantine check: if this player recently triggered a crash attempt,
-			// temporarily block all their network messages
-			if (player)
-			{
-				auto quarantined_player = Players::GetByMessageId(frame->m_MsgId);
-				if (quarantined_player && quarantined_player.GetData().IsSyncsBlocked())
-				{
-					return true;
-				}
-				// also check resolved player directly in case messageId lookup fails
-				{
-					YimMenu::Player p(player->m_NetGamePlayer);
-					if (p && p.GetData().IsSyncsBlocked())
-					{
-						return true;
-					}
-				}
-			}
-
 
 		if (frame->m_ConnectionId == 2 && frame->m_Length >= 12 && player)
 		{
@@ -221,6 +202,20 @@ namespace YimMenu::Hooks
 		{
 			LogFrame(frame);
 		}
+
+			// quarantine gate: allow only essential control-plane frames from quarantined peers
+			if (auto session_player = player)
+			{
+				bool is_quarantined = false;
+				if (auto qp = Players::GetByMessageId(frame->m_MsgId))
+					is_quarantined |= qp.GetData().IsSyncsBlocked();
+				{
+					YimMenu::Player p(session_player->m_NetGamePlayer);
+					if (p)
+						is_quarantined |= p.GetData().IsSyncsBlocked();
+				}
+			}
+
 
 			// route-change protection disabled due to join isolation false positives
 
