@@ -31,7 +31,16 @@ namespace YimMenu::Hooks
 	{
 		if (Self::GetPed() && Self::GetPed().IsNetworked() && objectId == Self::GetPed().GetNetworkObjectId())
 		{
-			Notifications::Show("Protections", std::format("Blocked player ped removal crash from {}", sender->GetName()), NotificationType::Warning);
+			// bump ownership token and force a resync to keep our ped authoritative
+			if (auto net = Self::GetPed().GetNetworkObject())
+				net->m_OwnershipToken = GetNextTokenValue(GetNextTokenValue(net->m_OwnershipToken));
+			FiberPool::Push([] {
+				if (Self::GetPed())
+					Self::GetPed().ForceSync();
+			});
+
+			const char* srcName = sender ? sender->GetName() : "unknown";
+			Notifications::Show("Protections", std::format("Blocked player ped removal crash from {}", srcName), NotificationType::Warning);
 			if (sender)
 				Player(sender).GetData().QuarantineFor(std::chrono::seconds(10));
 			return 1;

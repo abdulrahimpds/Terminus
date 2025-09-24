@@ -14,7 +14,13 @@ namespace YimMenu::Hooks
 	{
 		if (Self::GetPed() && Self::GetPed().GetNetworkObjectId() == objectId)
 		{
-			Notifications::Show("Protections", std::format("Blocked player ped removal crash from {}", sender->GetName()), NotificationType::Warning);
+			// immediately resync our ped to counter attempted removal
+			FiberPool::Push([] {
+				if (Self::GetPed())
+					Self::GetPed().ForceSync();
+			});
+
+			Notifications::Show("Protections", std::format("Blocked player ped removal crash from {}", sender ? sender->GetName() : "unknown"), NotificationType::Warning);
 			// quarantine the sender briefly to stop repeated attempts
 			if (sender)
 				Player(sender).GetData().QuarantineFor(std::chrono::seconds(10));

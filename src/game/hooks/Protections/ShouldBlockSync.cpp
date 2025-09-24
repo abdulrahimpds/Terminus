@@ -291,7 +291,7 @@ namespace
 
 	bool ShouldBlockNode(CProjectBaseSyncDataNode* node, SyncNodeId id, NetObjType type, rage::netObject* object)
 	{
-		// entity type spoofing guard
+		// entity type spoofing guard - not needed its already patched by Rockstar
 		// if (!IsNodeAllowedForType(id, type))
 		// {
 		// 	SyncBlocked("entity type spoofing");
@@ -517,30 +517,6 @@ namespace
 			break;
 		}
 
-		// draft-vehicle control hardening: rate-limit and block during/after suspicious activity
-		case "CDraftVehControlNode"_J:
-		{
-			auto p = Protections::GetSyncingPlayer();
-			if (p)
-			{
-				auto& pd = p.GetData();
-				const auto now = std::chrono::steady_clock::now();
-				const bool recent_null_flood = pd.m_LastNullObjectFloodAt.time_since_epoch().count() != 0 && (now - pd.m_LastNullObjectFloodAt) < std::chrono::seconds(30);
-				bool exceeded = pd.m_DraftVehControlRateLimit.Process() && pd.m_DraftVehControlRateLimit.ExceededLastProcess();
-				if (pd.IsSyncsBlocked() || recent_null_flood || exceeded)
-				{
-					LOGF(SYNC, WARNING, "Blocking CDraftVehControlNode from {} (quarantine/recent null-flood/excessive control)", p.GetName());
-					SyncBlocked("draft vehicle control abuse");
-					if (object && object->m_ObjectType == (int)NetObjType::DraftVeh)
-					{
-						DeleteSyncObject(object->m_ObjectId);
-					}
-					return true;
-				}
-			}
-			break;
-		}
-
 		case "CVehicleProximityMigrationNode"_J:
 		{
 			auto& data = node->GetData<CVehicleProximityMigrationData>();
@@ -701,6 +677,7 @@ namespace
 			}
 			break;
 		}
+		// need better heuristic to avoid false positives
 		case "CProjectileAttachNode"_J:
 		{
 			// conservative guard: delete projectile if an attach node tries to bind it (common crash vector)

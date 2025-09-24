@@ -330,19 +330,6 @@ namespace YimMenu::Hooks
 				}
 				break;
 			}
-			// case NetMessageType::PLAYER_INITIALIZED:
-			// {
-			// 	// valid frame is exactly 3 bytes; drop anything else (NT crash mitigation)
-			// 	if (frame->m_Length != 3)
-			// 	{
-			// 		if (Features::_LogPackets.GetState())
-			// 			LOGF(VERBOSE, "Dropped PLAYER_INITIALIZED with unexpected size {}", frame->m_Length);
-			// 		if (auto qp = Players::GetByMessageId(frame->m_MsgId))
-			// 			qp.GetData().QuarantineFor(std::chrono::seconds(10));
-			// 		return true;
-			// 	}
-			// 	break;
-			// }
 
 		case NetMessageType::READY_FOR_GAME_SYNC_ACK:
 		{
@@ -355,40 +342,6 @@ namespace YimMenu::Hooks
 			}
 			break;
 		}
-
-		// control-plane traffic sanity (prevent malformed/fuzzed frames from stalling network)
-		// case NetMessageType::REASSIGN_NEGOTIATE:
-		// case NetMessageType::REASSIGN_RESPONSE:
-		// case NetMessageType::REASSIGN_CONFIRM:
-		// {
-		// 	// observed legitimate sizes are small (15/18/22/30/34). allow generous upper bound.
-		// 	if (frame->m_Length > 64)
-		// 	{
-		// 		if (Features::_LogPackets.GetState())
-		// 			LOGF(VERBOSE, "Dropped %s with unexpected size %d",
-		// 				(msg_type == NetMessageType::REASSIGN_NEGOTIATE ? "REASSIGN_NEGOTIATE" :
-		// 				(msg_type == NetMessageType::REASSIGN_RESPONSE ? "REASSIGN_RESPONSE" : "REASSIGN_CONFIRM")),
-		// 				frame->m_Length);
-		// 		if (auto qp = Players::GetByMessageId(frame->m_MsgId))
-		// 			qp.GetData().QuarantineFor(std::chrono::seconds(10));
-		// 		return true;
-		// 	}
-		// 	break;
-		// }
-
-		// case NetMessageType::SCRIPT_HANDSHAKE_ACK:
-		// {
-		// 	// typical size is 12; allow moderate cap to absorb variations but block gross fuzzing
-		// 	if (frame->m_Length > 64)
-		// 	{
-		// 		if (Features::_LogPackets.GetState())
-		// 			LOGF(VERBOSE, "Dropped SCRIPT_HANDSHAKE_ACK with unexpected size {}", frame->m_Length);
-		// 		if (auto qp = Players::GetByMessageId(frame->m_MsgId))
-		// 			qp.GetData().QuarantineFor(std::chrono::seconds(10));
-		// 		return true;
-		// 	}
-		// 	break;
-		// }
 		}
 
 		return CallOrig_SEH(orig, a1, ncm, frame);
