@@ -582,7 +582,7 @@ namespace
 						SyncBlocked("task whitelist");
 						// proactively quarantine to prevent immediate retries chaining into a crash
 						if (auto qp = Protections::GetSyncingPlayer())
-							qp.GetData().QuarantineFor(std::chrono::seconds(60));
+							qp.GetData().QuarantineFor(std::chrono::seconds(12));
 						//if (object) DeleteSyncObjectLater(object->m_ObjectId);
 						return true;
 					}
