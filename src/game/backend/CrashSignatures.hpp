@@ -194,7 +194,7 @@ namespace YimMenu::CrashSignatures
 		if (address >= 0x1A0000000000 && address <= 0x1AFFFFFFFFFFFF)
 		{
 			// additional validation: check if address looks like corrupted heap pointer
-			// expert recommendation: heap pointers should be reasonably aligned
+			// heap pointers should be reasonably aligned
 			if ((address & 0x7) != 0) // not 8-byte aligned - likely corruption
 			{
 				return true;
@@ -232,7 +232,7 @@ namespace YimMenu::CrashSignatures
 
 		if (address > 0 && address < 0x10000) // first 64KB - standard protection range
 		{
-			// expert recommendation: add additional validation for common attack patterns
+			// add additional validation for common attack patterns
 			// check for specific offsets commonly used in attacks
 			if (address == 0xC08 ||  // from BringPlayer crash
 			    address == 0x97 ||   // from Nemesis attack
@@ -243,7 +243,7 @@ namespace YimMenu::CrashSignatures
 				return true;
 			}
 
-			// expert recommendation: check for suspicious alignment patterns
+			// check for suspicious alignment patterns
 			// legitimate small addresses are usually well-aligned
 			if ((address & 0x3) == 0 && address < 0x8000) // 4-byte aligned in lower 32KB
 			{
@@ -257,7 +257,7 @@ namespace YimMenu::CrashSignatures
 	// additional validation functions for comprehensive protection
 	inline bool IsValidPointerAlignment(uintptr_t address)
 	{
-		// expert recommendation: most valid pointers on x64 are 8-byte aligned
+		// most valid pointers on x64 are 8-byte aligned
 		// unaligned pointers in critical ranges are often corruption
 		if (address < 0x10000 || address > 0x100000000000) // critical ranges
 		{
@@ -268,7 +268,7 @@ namespace YimMenu::CrashSignatures
 
 	inline bool HasSuspiciousBitPattern(uintptr_t address)
 	{
-		// expert recommendation: detect bit patterns common in memory corruption
+		// detect bit patterns common in memory corruption
 		// check for repeating nibbles (common in corruption)
 		uint8_t nibble = address & 0xF;
 		uint64_t pattern = nibble | (nibble << 4) | (nibble << 8) | (nibble << 12);
@@ -287,14 +287,14 @@ namespace YimMenu::CrashSignatures
 		return false;
 	}
 
-	// main intelligent pattern detection algorithm (expert-enhanced)
+	// main intelligent pattern detection algorithm
 	inline bool IsLikelyAttackPattern(void* ptr)
 	{
 		if (!ptr) return true; // null pointers are always suspicious
 
 		uintptr_t address = reinterpret_cast<uintptr_t>(ptr);
 
-		// expert recommendation: early validation for obviously invalid addresses
+		// early validation for obviously invalid addresses
 		if (HasSuspiciousBitPattern(address))
 		{
 			LOG(WARNING) << "Detected suspicious bit pattern: 0x" << std::hex << address;
@@ -341,7 +341,7 @@ namespace YimMenu::CrashSignatures
 			return true;
 		}
 
-		// expert recommendation: final alignment check for critical addresses
+		// final alignment check for critical addresses
 		if (!IsValidPointerAlignment(address))
 		{
 			LOG(WARNING) << "Detected invalid pointer alignment: 0x" << std::hex << address;
@@ -354,12 +354,12 @@ namespace YimMenu::CrashSignatures
 	// performance-optimized enhanced crash pointer detection
 	inline bool IsKnownCrashPointerEnhanced(void* ptr)
 	{
-		// expert recommendation: fast path for null pointers
+		// fast path for null pointers
 		if (!ptr) return true;
 
 		uintptr_t address = reinterpret_cast<uintptr_t>(ptr);
 
-		// expert recommendation: ultra-fast checks first (single comparisons)
+		// ultra-fast checks first (single comparisons)
 		// check for obviously invalid addresses that don't need complex analysis
 		if (address < 0x1000 ||                    // first 4KB (most common attacks)
 		    address == 0xFFFFFFFFFFFFFFFF ||       // invalid sentinel
@@ -369,13 +369,13 @@ namespace YimMenu::CrashSignatures
 			return true;
 		}
 
-		// expert recommendation: exact database match (hash lookup - very fast)
+		// exact database match (hash lookup - very fast)
 		if (IsKnownCrashPointer(ptr))
 		{
 			return true;
 		}
 
-		// expert recommendation: only run expensive pattern analysis for suspicious ranges
+		// only run expensive pattern analysis for suspicious ranges
 		// this prevents performance impact on normal pointers
 		if (address < 0x10000 ||                           // low addresses
 		    address > 0x100000000000 ||                    // high addresses
