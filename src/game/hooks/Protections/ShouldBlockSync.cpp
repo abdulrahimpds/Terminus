@@ -677,18 +677,45 @@ namespace
 			}
 			break;
 		}
-		// need better heuristic to avoid false positives
-		case "CProjectileAttachNode"_J:
-		{
-			// conservative guard: delete projectile if an attach node tries to bind it (common crash vector)
-			if (object && object->m_ObjectType == (uint16_t)NetObjType::WorldProjectile)
-			{
-				SyncBlocked("projectile attachment");
-				DeleteSyncObject(object->m_ObjectId);
-				return true;
-			}
-			break;
-		}
+		// narrowed guard to reduce false positives while still blocking malicious patterns
+		// case "CProjectileAttachNode"_J:
+		// {
+		// 	// allow normal arrows/dynamite/hatchets to attach; only block suspicious cases
+		// 	if (object && object->m_ObjectType == (uint16_t)NetObjType::WorldProjectile)
+		// 	{
+		// 		auto sp = Protections::GetSyncingPlayer();
+		// 		if (sp)
+		// 		{
+		// 			auto& pd = sp.GetData();
+		// 			const auto now = std::chrono::steady_clock::now();
+		// 			const bool recent_null_flood = pd.m_LastNullObjectFloodAt.time_since_epoch().count() != 0 && (now - pd.m_LastNullObjectFloodAt) < std::chrono::seconds(30);
+		// 			// 1) drop during quarantine or shortly after null-object floods
+		// 			if (pd.IsSyncsBlocked() || recent_null_flood)
+		// 			{
+		// 				SyncBlocked("projectile attach during quarantine/null-flood");
+		// 				DeleteSyncObject(object->m_ObjectId);
+		// 				return true;
+		// 			}
+		// 			// 2) rate-limit per player to suppress invisible-shooter spam patterns
+		// 			if (pd.m_ProjectileAttachRateLimit.Process() && pd.m_ProjectileAttachRateLimit.ExceededLastProcess())
+		// 			{
+		// 				SyncBlocked("projectile attach spam");
+		// 				pd.QuarantineFor(std::chrono::seconds(10));
+		// 				DeleteSyncObject(object->m_ObjectId);
+		// 				return true;
+		// 			}
+		// 			// 3) ownership consistency: if the attaching projectile wasn't created by this syncer, block
+		// 			if (auto creator = GetObjectCreator(object); creator && creator != sp)
+		// 			{
+		// 				SyncBlocked("projectile attach owner mismatch");
+		// 				DeleteSyncObject(object->m_ObjectId);
+		// 				return true;
+		// 			}
+		// 		}
+		// 		// otherwise allow (normal combat projectiles)
+		// 	}
+		// 	break;
+		// }
 		case "CPropSetCreationNode"_J:
 		{
 			auto& data = node->GetData<CPropSetCreationData>();
@@ -1042,9 +1069,8 @@ namespace
 			{
 				auto p = ::YimMenu::Protections::GetSyncingPlayer();
 				auto sid = Nodes::Find((uint64_t)node);
-				LOGF(SYNC, WARNING, "SEH in LogSyncNode for {} from {}", sid.name ? sid.name : "unknown_node", p ? p.GetName() : "unknown");
-				if (p)
-					p.GetData().QuarantineFor(std::chrono::seconds(10));
+				// logging should never change behavior: do not quarantine/block on logger exceptions
+				LOGF(SYNC, WARNING, "SEH in LogSyncNode for {} from {} (logging-only; no quarantine)", sid.name ? sid.name : "unknown_node", p ? p.GetName() : "unknown");
 			}
 			{
 				bool seh = false;

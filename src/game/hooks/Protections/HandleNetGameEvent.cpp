@@ -159,23 +159,23 @@ namespace YimMenu::Hooks
 		}
 
 			// weapon damage crash/spam protection
-			if (type == NetEventType::WEAPON_DAMAGE_EVENT && sourcePlayer)
-			{
-				auto p = Player(sourcePlayer);
-				// rate-limit damage events per attacker; drop and quarantine on spam
-				if (p.GetData().m_WeaponDamageRateLimit.Process())
-				{
-					if (p.GetData().m_WeaponDamageRateLimit.ExceededLastProcess())
-					{
-						LOGF(NET_EVENT, WARNING, "Blocked weapon damage spam from {}", sourcePlayer->GetName());
-						p.GetData().QuarantineFor(std::chrono::seconds(10));
-						Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
-						return;
-					}
-				}
-			}
+			// if (type == NetEventType::WEAPON_DAMAGE_EVENT && sourcePlayer)
+			// {
+			// 	auto p = Player(sourcePlayer);
+			// 	// rate-limit damage events per attacker; drop and quarantine on spam
+			// 	if (p.GetData().m_WeaponDamageRateLimit.Process())
+			// 	{
+			// 		if (p.GetData().m_WeaponDamageRateLimit.ExceededLastProcess())
+			// 		{
+			// 			LOGF(NET_EVENT, WARNING, "Blocked weapon damage spam from {}", sourcePlayer->GetName());
+			// 			p.GetData().QuarantineFor(std::chrono::seconds(10));
+			// 			Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
+			// 			return;
+			// 		}
+			// 	}
+			// }
 
-			// sunrise variant: sometimes routes damage through different net events; apply same rate-limiting
+			// sometimes routes damage through different net events; apply same rate-limiting
 			if ((type == NetEventType::FIRE_EVENT || type == NetEventType::FIRE_TRAIL_UPDATE_EVENT || type == NetEventType::PED_PLAY_PAIN_EVENT) && sourcePlayer)
 			{
 				auto p = Player(sourcePlayer);

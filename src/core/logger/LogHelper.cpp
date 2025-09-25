@@ -30,6 +30,8 @@ namespace YimMenu
 
 	void LogHelper::DestroyImpl()
 	{
+		// ensure all pending async log messages are written before tearing down sinks
+		Logger::FlushQueue();
 		Logger::Destroy();
 		CloseOutputStreams();
 

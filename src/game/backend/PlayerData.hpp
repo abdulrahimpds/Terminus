@@ -53,6 +53,8 @@ namespace YimMenu
 		RateLimiter m_AttachRateLimit{2s, 4};
 		// rate limiter for projectile creation (valid weapon spam / invisible shooters)
 		RateLimiter m_ProjectileCreateRateLimit{1s, 10};
+		// rate limiter for projectile attachment spam (reduce false positives vs. arrows/dynamite by allowing normal rates)
+		RateLimiter m_ProjectileAttachRateLimit{1s, 8};
 		// rate limiter for null-object sync logging (detect flood of null object nodes)
 		RateLimiter m_NullObjectLogRateLimit{2s, 60};
 
@@ -68,7 +70,7 @@ namespace YimMenu
 		// per-event rate limiters to suppress valid-but-spammed events
 		RateLimiter m_ClearTasksRateLimit{2s, 4};
 		// give-control flood limiter (host/control spam) — allow high burst to avoid false positives
-		RateLimiter m_GiveControlRateLimit{1s, 20};
+		RateLimiter m_GiveControlRateLimit{1s, 30};
 
 		// draft-vehicle control spam limiter
 		RateLimiter m_DraftVehControlRateLimit{2s, 8};

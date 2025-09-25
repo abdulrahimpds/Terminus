@@ -116,7 +116,7 @@ namespace YimMenu::Hooks
 					pd.m_LastNullObjectFloodAt = std::chrono::steady_clock::now();
 					pd.m_NullObjectFloodStrikes++;
 					const bool escalate = pd.m_NullObjectFloodStrikes >= 2; // second strike -> longer block
-					const auto dur = escalate ? std::chrono::seconds(300) : std::chrono::seconds(60);
+					const auto dur = escalate ? std::chrono::seconds(60) : std::chrono::seconds(10);
 					pd.QuarantineFor(dur);
 					LOGF(SYNC, WARNING, "Quarantined {} for null-object node flood ({} strike, {}s)", player.GetName(), pd.m_NullObjectFloodStrikes, (int)dur.count());
 				}

@@ -1,6 +1,2 @@
 build/
 .vs
-*.zip
-resources/
-.clinerules/
-.augment/
