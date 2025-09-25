@@ -741,14 +741,13 @@ namespace YimMenu::CrashSignatures
 		LOG(INFO) << "Pre-populated " << validTasks.size() << " existing 4-tuple task combinations";
 	}
 
-	// Build a set of valid triples at startup
+	// build a set of valid triples at startup
 	inline void InitializeTaskTripleWhitelist() {
 		std::call_once(g_TripleInitFlag, [] {
-			// First ensure we have the base data
+			// first ensure we have the base data
 			PrePopulateExistingTasks();
 
-			// Convert 4-tuples to 3-tuples (removing unstable taskIndex)
-			// "When I deduplicated your 1,435 quadruples on these three fields there were 1,078 unique triples"
+			// convert 4-tuples to 3-tuples (removing unstable taskIndex)
 			for (const auto& task : g_SeenTasks) {
 				int treeIdx = std::get<0>(task);      // treeIndex
 				// int taskIdx = std::get<1>(task);   // taskIndex - ignore unstable array position
@@ -766,7 +765,7 @@ namespace YimMenu::CrashSignatures
 		});
 	}
 
-	// Fast triple validation using semantic fields only
+	// fast triple validation using semantic fields only
 	inline bool IsValidTaskTriple(int treeIdx, int taskType, int taskTreeType) {
 		InitializeTaskTripleWhitelist();
 		std::uint64_t key = (static_cast<std::uint64_t>(treeIdx)  << 32) |
