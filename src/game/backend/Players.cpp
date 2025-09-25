@@ -85,7 +85,7 @@ namespace YimMenu
 			{
 				if (data.m_Logging) { any = true; break; }
 			}
-			if (!any)
+			if (!any && Players::IsLoggingAutoEnabled())
 			{
 				auto startsWithLog = [](const std::string& s) {
 					return s.size() >= 3 && (s[0] == 'l' || s[0] == 'L') && (s[1] == 'o' || s[1] == 'O') && (s[2] == 'g' || s[2] == 'G');
@@ -97,6 +97,7 @@ namespace YimMenu
 					if ((startsWithLog(n) || startsWithLog(l)) && bc->GetState())
 						bc->SetState(false);
 				}
+				Players::SetLoggingAutoEnabled(false);
 			}
 		}
 	}

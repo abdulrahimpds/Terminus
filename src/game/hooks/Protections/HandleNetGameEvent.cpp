@@ -158,39 +158,6 @@ namespace YimMenu::Hooks
 			}
 		}
 
-			// weapon damage crash/spam protection
-			// if (type == NetEventType::WEAPON_DAMAGE_EVENT && sourcePlayer)
-			// {
-			// 	auto p = Player(sourcePlayer);
-			// 	// rate-limit damage events per attacker; drop and quarantine on spam
-			// 	if (p.GetData().m_WeaponDamageRateLimit.Process())
-			// 	{
-			// 		if (p.GetData().m_WeaponDamageRateLimit.ExceededLastProcess())
-			// 		{
-			// 			LOGF(NET_EVENT, WARNING, "Blocked weapon damage spam from {}", sourcePlayer->GetName());
-			// 			p.GetData().QuarantineFor(std::chrono::seconds(10));
-			// 			Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
-			// 			return;
-			// 		}
-			// 	}
-			// }
-
-			// sometimes routes damage through different net events; apply same rate-limiting
-			if ((type == NetEventType::FIRE_EVENT || type == NetEventType::FIRE_TRAIL_UPDATE_EVENT || type == NetEventType::PED_PLAY_PAIN_EVENT) && sourcePlayer)
-			{
-				auto p = Player(sourcePlayer);
-				if (p.GetData().m_WeaponDamageRateLimit.Process())
-				{
-					if (p.GetData().m_WeaponDamageRateLimit.ExceededLastProcess())
-					{
-						LOGF(NET_EVENT, WARNING, "Blocked damage-adjacent spam (type {}) from {}", (int)type, sourcePlayer->GetName());
-						p.GetData().QuarantineFor(std::chrono::seconds(10));
-						Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
-						return;
-					}
-				}
-			}
-
 			// train crash protection: spam + invalid
 			if (type == NetEventType::NETWORK_TRAIN_REQUEST_EVENT && sourcePlayer)
 			{

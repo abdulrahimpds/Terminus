@@ -9,6 +9,8 @@ namespace YimMenu
 		std::unordered_map<uint8_t, Player> m_Players{};
 		std::unordered_map<uint8_t, PlayerData> m_PlayerDatas{};
 		Player m_SelectedPlayer = Player((uint8_t)0);
+		// tracks whether logging debuggers were auto-enabled via the first per-player Logging checkbox
+		bool m_LoggingAutoEnabled = false;
 
 	public:
 		static void OnPlayerJoin(CNetGamePlayer* player)
@@ -54,6 +56,16 @@ namespace YimMenu
 		static PlayerData& GetPlayerData(uint8_t idx)
 		{
 			return GetInstance().m_PlayerDatas[idx];
+		}
+
+		// flag management for auto-enabled debug logging
+		static void SetLoggingAutoEnabled(bool v)
+		{
+			GetInstance().m_LoggingAutoEnabled = v;
+		}
+		static bool IsLoggingAutoEnabled()
+		{
+			return GetInstance().m_LoggingAutoEnabled;
 		}
 
 			// logging filter helper: if any players have logging enabled, only log for those; otherwise log all

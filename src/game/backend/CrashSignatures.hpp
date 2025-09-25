@@ -19,7 +19,7 @@ namespace YimMenu::CrashSignatures
 		0x24FC751644A,  // lines 217, 272, 327, 382, 437
 		0xF089413058,   // line 51
 		0xF089412FC8,   // line 106
-		
+
 		// from cout2.log
 		0xFFFFFFFFFFFFFFFF, // lines 107, 162, 256, 311, 495, 550 - most common crash signature
 		0x90042,        // line 52
@@ -27,11 +27,11 @@ namespace YimMenu::CrashSignatures
 		0x10DE38DE28,   // line 273
 		0x144E21D28,    // line 328
 		0x144E21C98,    // line 383
-		
+
 		// from cout3.log
 		0x1A600008AFC,  // line 376
 		0x1A600008A6C,  // line 422
-		
+
 		// from cout4.log
 		0x40,           // line 52
 		0x42,           // lines 107, 163, 273, 328, 383
@@ -141,20 +141,20 @@ namespace YimMenu::CrashSignatures
 		// add new crash signatures here as they are discovered
 		// format: 0x1234567890, // from crash log file - description
 	};
-	
+
 	// check if a memory address is known to cause crashes
 	inline bool IsKnownCrashAddress(uintptr_t address)
 	{
 		return KnownCrashAddresses.find(address) != KnownCrashAddresses.end();
 	}
-	
+
 	// check if a pointer is known to cause crashes
 	inline bool IsKnownCrashPointer(void* ptr)
 	{
 		if (!ptr) return false; // null pointers are handled elsewhere
 		return IsKnownCrashAddress(reinterpret_cast<uintptr_t>(ptr));
 	}
-	
+
 	// check if an entity handle corresponds to a known crash address
 	inline bool IsKnownCrashHandle(int handle)
 	{
@@ -495,7 +495,7 @@ namespace YimMenu::CrashSignatures
 			{2, 6, 428, 7}, {2, 6, 544, 7}, {2, 7, 23, 9}, {2, 7, 238, 8}, {2, 7, 428, 8},
 			{2, 7, 544, 7}, {2, 8, 23, 9}, {2, 8, 238, 8}, {2, 8, 238, 9}, {2, 8, 428, 10},
 			{2, 8, 613, 9}, {2, 9, 23, 9}, {2, 9, 23, 10}, {2, 9, 428, 10}, {2, 10, 428, 10},
-			{2, 10, 428, 11}, {2, 11, 430, 12},
+			{2, 10, 428, 11}, {2, 11, 430, 12}, {3, 1, 613, 2},
 			{3, 0, 3, 1}, {3, 0, 4, 1}, {3, 0, 5, 1}, {3, 0, 31, 1}, {3, 0, 46, 1},
 			{3, 0, 48, 0}, {3, 0, 48, 1}, {3, 0, 48, 255}, {3, 0, 76, 0}, {3, 0, 121, 1},
 			{3, 0, 121, 2}, {3, 0, 138, 0}, {3, 0, 138, 1}, {3, 0, 142, 1}, {3, 0, 178, 0},
@@ -547,7 +547,6 @@ namespace YimMenu::CrashSignatures
 			{4, 3, 48, 3}, {4, 3, 48, 255}, {4, 3, 103, 3}, {4, 3, 138, 3}, {4, 3, 277, 3},
 			{4, 3, 285, 3}, {4, 3, 428, 3}, {4, 3, 631, 2}, {4, 4, 48, 4}, {4, 4, 48, 255},
 			{4, 4, 76, 4}, {4, 4, 281, 4}, {4, 4, 430, 4}, {4, 5, 48, 5},
-			// NEW combinations from validtask2.log
 			{0, 0, 121, 1}, {0, 0, 150, 4}, {0, 0, 154, 4}, {0, 0, 168, 4}, {0, 0, 169, 3},
 			{0, 0, 451, 4}, {0, 1, 2, 1}, {0, 1, 154, 5}, {0, 1, 346, 2}, {0, 1, 372, 1},
 			{0, 1, 580, 5}, {0, 1, 587, 6}, {0, 1, 603, 4}, {0, 1, 604, 6}, {0, 2, 355, 1},
@@ -573,7 +572,6 @@ namespace YimMenu::CrashSignatures
 			{4, 1, 4, 0}, {4, 1, 238, 0}, {4, 1, 270, 1}, {4, 2, 4, 2}, {4, 2, 23, 1},
 			{4, 2, 76, 1}, {4, 2, 185, 2}, {4, 2, 266, 2}, {4, 2, 279, 2}, {4, 2, 503, 1},
 			{4, 3, 138, 2}, {4, 3, 428, 2}, {4, 4, 1, 4}, {4, 4, 430, 3}, {4, 5, 285, 5},
-			// NEW combinations from validtask3.log
 			{0, 0, 169, 4}, {0, 1, 32, 8}, {0, 1, 70, 1}, {0, 1, 71, 1}, {0, 1, 579, 5},
 			{0, 1, 582, 2}, {0, 1, 582, 4}, {0, 1, 584, 1}, {0, 1, 587, 5}, {0, 2, 48, 9},
 			{0, 2, 428, 5}, {0, 2, 580, 2}, {0, 3, 428, 4}, {0, 3, 428, 5}, {0, 3, 428, 6},
@@ -609,7 +607,6 @@ namespace YimMenu::CrashSignatures
 			{4, 0, 10, 0}, {4, 0, 31, 5}, {4, 0, 142, 4}, {4, 0, 142, 5}, {4, 0, 142, 255},
 			{4, 0, 176, 5}, {4, 0, 176, 8}, {4, 0, 177, 1}, {4, 1, 142, 1}, {4, 1, 177, 1},
 			{4, 2, 138, 2}, {4, 2, 176, 2}, {4, 2, 257, 2}, {4, 2, 286, 2}, {4, 3, 53, 3},
-			// NEW combinations from validtask4.log
 			{0, 0, 154, 3}, {0, 0, 169, 0}, {0, 1, 428, 1}, {0, 1, 579, 1}, {0, 1, 582, 1},
 			{0, 1, 582, 6}, {0, 1, 583, 5}, {0, 2, 48, 2}, {0, 2, 428, 1}, {0, 2, 428, 7},
 			{0, 3, 428, 1}, {1, 0, 4, 1}, {1, 0, 32, 1}, {1, 0, 46, 1}, {1, 0, 216, 1},
@@ -635,12 +632,10 @@ namespace YimMenu::CrashSignatures
 			{4, 9, 238, 9}, {4, 9, 428, 9}, {4, 9, 613, 9}, {4, 10, 23, 10}, {4, 10, 428, 10},
 			{4, 10, 428, 11}, {4, 10, 613, 10}, {4, 11, 428, 11}, {4, 11, 430, 11}, {4, 11, 430, 12},
 			{4, 12, 430, 12}, {4, 2, 31, 2}, {0, 2, 31, 2},
-			// New combinations from validtask5.log
-			{0, 0, 36, 0}, {0, 1, 580, 2}, {1, 2, 428, 1}, {1, 2, 428, 3}, {2, 2, 547, 4}, 
+			{0, 0, 36, 0}, {0, 1, 580, 2}, {1, 2, 428, 1}, {1, 2, 428, 3}, {2, 2, 547, 4},
 			{2, 2, 572, 1}, {2, 3, 412, 4}, {2, 3, 539, 5}, {2, 4, 23, 6}, {2, 5, 428, 7},
 			{2, 6, 613, 8}, {2, 9, 613, 10}, {3, 0, 221, 0}, {3, 1, 138, 1}, {4, 2, 238, 2},
 			{4, 3, 23, 3}, {4, 3, 76, 3}, {4, 3, 427, 3}, {4, 4, 622, 4}, {4, 1, 133, 1},
-			// New combinations from validtask6.log
 			{2, 0, 121, 6}, {4, 2, 191, 2}, {3, 0, 502, 1}, {4, 2, 506, 2}, {4, 3, 152, 3},
 			{4, 4, 149, 4}, {4, 5, 154, 5}, {3, 1, 503, 2}, {3, 3, 281, 4}, {4, 1, 625, 1},
 			{3, 0, 626, 0}, {3, 4, 285, 5}, {2, 0, 474, 2}, {2, 1, 475, 3}, {4, 3, 437, 3},
@@ -673,7 +668,6 @@ namespace YimMenu::CrashSignatures
 			{2, 0, 31, 1}, {1, 0, 453, 255}, {3, 0, 449, 0}, {3, 1, 142, 2}, {3, 0, 312, 1},
 			{3, 1, 453, 2}, {3, 2, 455, 3}, {3, 3, 454, 4}, {3, 4, 631, 5}, {3, 1, 257, 0},
 			{3, 2, 147, 1}, {3, 3, 48, 255},
-			// New combinations from validtask7.log
 			{2, 3, 221, 5}, {0, 1, 587, 1}, {4, 0, 567, 1}, {4, 5, 48, 255}, {2, 0, 532, 4},
 			{2, 3, 48, 7}, {4, 3, 429, 3}, {1, 0, 221, 2}, {1, 1, 154, 3}, {0, 1, 584, 3},
 			{4, 2, 449, 1}, {3, 1, 76, 0}, {4, 1, 10, 0}, {2, 2, 3, 3}, {3, 0, 435, 8},
@@ -689,7 +683,6 @@ namespace YimMenu::CrashSignatures
 			{0, 3, 428, 8}, {0, 0, 35, 3}, {0, 1, 34, 4}, {3, 0, 193, 1}, {3, 1, 176, 2},
 			{3, 3, 545, 4}, {3, 1, 436, 1}, {3, 2, 544, 2}, {3, 3, 238, 3}, {3, 4, 23, 4},
 			{0, 1, 601, 3}, {0, 1, 587, 4}, {3, 2, 76, 5}, {3, 3, 285, 4}, {0, 1, 154, 7},
-			// New combinations from validtask8.log
 			{3, 0, 436, 1}, {1, 0, 32, 0}, {4, 0, 442, 255}, {3, 4, 257, 5}, {4, 1, 428, 0},
 			{2, 2, 178, 2}, {2, 3, 4, 3}, {0, 1, 594, 2}, {0, 2, 576, 3}, {0, 2, 32, 3},
 			{0, 1, 48, 5}, {0, 1, 583, 4}, {0, 1, 605, 5}, {0, 1, 594, 5}, {0, 2, 576, 6},
@@ -709,7 +702,6 @@ namespace YimMenu::CrashSignatures
 			{3, 3, 526, 4}, {3, 4, 227, 5}, {3, 6, 544, 6}, {3, 2, 89, 3}, {3, 5, 544, 5},
 			{2, 0, 616, 3}, {2, 1, 257, 4}, {0, 1, 584, 2}, {3, 3, 48, 5}, {3, 3, 4, 4},
 			{1, 1, 589, 1},
-			// New combinations from validtask9.log
 			{1, 0, 48, 1}, {3, 6, 238, 8}, {3, 1, 147, 1}, {3, 5, 48, 10}, {3, 7, 238, 7},
 			{0, 1, 604, 3}, {0, 1, 32, 0}, {0, 2, 48, 1}, {3, 9, 430, 7}, {3, 5, 48, 11},
 			{3, 10, 430, 7}, {3, 3, 526, 0}, {3, 4, 48, 4}, {4, 0, 31, 6}, {3, 4, 572, 4},
@@ -718,7 +710,6 @@ namespace YimMenu::CrashSignatures
 			{4, 4, 285, 4}, {3, 5, 238, 7}, {4, 0, 26, 0}, {3, 0, 428, 1}, {3, 7, 427, 8},
 			{3, 8, 427, 9}, {3, 3, 633, 4}, {3, 4, 638, 5}, {3, 0, 309, 0}, {3, 0, 428, 0},
 			{3, 9, 76, 10}, {3, 2, 523, 7}, {3, 6, 427, 7}, {3, 4, 427, 5},
-			// New combinations from validtask10.log
 			{3, 0, 107, 1}, {3, 3, 53, 4}, {3, 1, 474, 2}, {3, 2, 475, 3}, {3, 1, 108, 2},
 			{3, 6, 430, 8}, {2, 5, 539, 7}, {2, 6, 23, 8}, {2, 7, 428, 9}, {3, 1, 113, 2},
 			{2, 3, 547, 5}, {2, 1, 523, 5}, {2, 2, 23, 6}, {2, 4, 613, 8}, {2, 2, 572, 6},
@@ -726,7 +717,6 @@ namespace YimMenu::CrashSignatures
 			{2, 4, 437, 6}, {3, 5, 412, 6}, {3, 6, 438, 7}, {4, 0, 80, 3}, {3, 8, 48, 8},
 			{3, 9, 48, 8}, {3, 1, 191, 2}, {1, 0, 4, 2}, {1, 1, 188, 3}, {1, 0, 121, 2},
 			{1, 1, 604, 7},
-            // New combinations from validtask11.log
 			{3, 0, 121, 0}, {2, 4, 227, 6}, {2, 6, 544, 8}, {2, 4, 76, 5}, {2, 5, 238, 6},
 			{4, 1, 621, 1}, {0, 2, 35, 7}, {0, 3, 34, 8}, {0, 3, 32, 8}, {0, 4, 48, 9},
 			{3, 0, 5, 0}, {0, 1, 582, 8}, {0, 2, 428, 9}, {0, 1, 576, 5}, {3, 4, 185, 5},
@@ -736,10 +726,8 @@ namespace YimMenu::CrashSignatures
 			{3, 7, 23, 7}, {3, 8, 428, 8}, {3, 2, 178, 2}, {3, 3, 4, 3}, {4, 0, 31, 4},
 			{2, 4, 433, 5}, {4, 0, 80, 7}, {3, 7, 437, 8}, {3, 8, 539, 9}, {3, 4, 547, 4},
 			{4, 0, 80, 6}, {2, 0, 113, 4},
-            // New combinations from validtask12.log
             {2, 4, 438, 5}, {2, 6, 48, 6}, {2, 6, 430, 8}, {2, 7, 48, 6}, {2, 6, 238, 7},
             {0, 1, 605, 2}, {2, 2, 76, 3}, {2, 2, 154, 3}, {4, 4, 428, 4},
-            // New combinations from validtask13.log
 			{2, 2, 428, 2}, {2, 3, 564, 4}, {2, 6, 437, 6}, {2, 1, 4, 3}, {1, 1, 589, 2},
 			{0, 0, 576, 2}, {0, 0, 32, 2}, {0, 1, 48, 3}, {2, 2, 437, 3}, {4, 4, 517, 4},
 			{4, 0, 8, 0}, {4, 6, 238, 6}, {4, 2, 427, 2}
@@ -787,35 +775,38 @@ namespace YimMenu::CrashSignatures
 		return g_ValidTaskTriples.find(key) != g_ValidTaskTriples.end();
 	}
 
-	// Rate limiting for fuzzer attack logging
-	static std::unordered_map<std::string, std::chrono::steady_clock::time_point> g_LastFuzzerLogTime;
-	static std::unordered_map<std::string, int> g_FuzzerAttackCount;
-	static std::mutex g_FuzzerLogMutex;
-
-	// "log once, and possibly block the player"
-	inline void LogFuzzerAttackOnce(const std::string& playerName, const std::string& attackDetails)
-	{
-		std::lock_guard<std::mutex> lock(g_FuzzerLogMutex);
-
-		// Only log once per player to prevent spam from loop attacks
-		std::string playerKey = "fuzzer_" + playerName;
-		if (g_LastFuzzerLogTime.find(playerKey) == g_LastFuzzerLogTime.end())
+		// learning-mode helpers: remember unique non-whitelisted task 4-tuples per session
+		struct TaskQuadKey {
+			int treeIndex;
+			int taskIndex;
+			int taskType;
+			int taskTreeType;
+			bool operator==(const TaskQuadKey& o) const noexcept {
+				return treeIndex == o.treeIndex && taskIndex == o.taskIndex && taskType == o.taskType && taskTreeType == o.taskTreeType;
+			}
+		};
+		struct TaskQuadHasher {
+			size_t operator()(const TaskQuadKey& k) const noexcept {
+				// simple hash combine on four ints (sufficient for dedup logging)
+				size_t h1 = std::hash<int>{}(k.treeIndex);
+				size_t h2 = std::hash<int>{}(k.taskIndex);
+				size_t h3 = std::hash<int>{}(k.taskType);
+				size_t h4 = std::hash<int>{}(k.taskTreeType);
+				size_t h = h1;
+				h ^= h2 + 0x9e3779b9 + (h << 6) + (h >> 2);
+				h ^= h3 + 0x9e3779b9 + (h << 6) + (h >> 2);
+				h ^= h4 + 0x9e3779b9 + (h << 6) + (h >> 2);
+				return h;
+			}
+		};
+		inline std::unordered_set<TaskQuadKey, TaskQuadHasher> g_LoggedNonWhitelistTaskQuads;
+		inline std::mutex g_TaskQuadLogMutex;
+		// returns true if this (treeIndex, taskIndex, taskType, taskTreeType) was not seen before (so caller should log)
+		inline bool RememberNonWhitelistedTaskQuad(int treeIndex, int taskIndex, int taskType, int taskTreeType)
 		{
-			LOG(WARNING) << "FUZZER ATTACK detected from " << playerName << " - " << attackDetails;
-			g_LastFuzzerLogTime[playerKey] = std::chrono::steady_clock::now();
+			std::lock_guard<std::mutex> lock(g_TaskQuadLogMutex);
+			TaskQuadKey q{treeIndex, taskIndex, taskType, taskTreeType};
+			auto [it, inserted] = g_LoggedNonWhitelistTaskQuads.insert(q);
+			return inserted;
 		}
-
-		// Count attacks for analysis but don't spam logs
-		g_FuzzerAttackCount[playerKey]++;
-	}
-
-	// REMOVED LEARNING MODE - Pure production whitelist validation
-	inline bool IsValidTaskTreeData(int treeIndex, int taskIndex, int taskType, int taskTreeType)
-	{
-		// Use only semantic fields, ignore unstable array positions
-		return IsValidTaskTriple(treeIndex, taskType, taskTreeType);
-	}
-
-	// REMOVED LEARNING MODE - "you retain the usefulness of your 3‑day dataset"
-	// The learning phase is complete. Pure production whitelist validation only.
 }

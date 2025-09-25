@@ -64,20 +64,23 @@ namespace YimMenu::Submenus
 								}
 								if (!any_other)
 								{
-									auto enable_by_label = [](const char* label) {
+									auto enable_by_label = [](const char* label) -> bool {
 										for (auto* bc : Commands::GetBoolCommands())
 										{
 											if (bc->GetLabel() == label && !bc->GetState())
 											{
 												bc->SetState(true);
-												break;
+												return true;
 											}
 										}
+										return false;
 									};
-									enable_by_label("Log Incoming Clones");
-									enable_by_label("Log Network Events");
-									enable_by_label("Log Script Events");
-									enable_by_label("Log Packets");
+									bool enabled_any = false;
+									enabled_any |= enable_by_label("Log Incoming Clones");
+									enabled_any |= enable_by_label("Log Network Events");
+									enabled_any |= enable_by_label("Log Script Events");
+									enabled_any |= enable_by_label("Log Packets");
+									if (enabled_any) Players::SetLoggingAutoEnabled(true);
 								}
 							}
 							else if (prev_logging && !now_logging)
@@ -88,7 +91,7 @@ namespace YimMenu::Submenus
 								{
 									if (idx != sel_id && ply.GetData().m_Logging) { any_other = true; break; }
 								}
-								if (!any_other)
+								if (!any_other && Players::IsLoggingAutoEnabled())
 								{
 									auto startsWithLog = [](const std::string& s) {
 										return s.size() >= 3 && (s[0] == 'l' || s[0] == 'L') && (s[1] == 'o' || s[1] == 'O') && (s[2] == 'g' || s[2] == 'G');
@@ -100,6 +103,7 @@ namespace YimMenu::Submenus
 										if ((startsWithLog(n) || startsWithLog(l)) && bc->GetState())
 											bc->SetState(false);
 									}
+									Players::SetLoggingAutoEnabled(false);
 								}
 							}
 						}

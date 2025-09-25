@@ -61,6 +61,7 @@ namespace YimMenu::Features
 	BoolCommand _BlockVehicleFlooding("blockvehflood", "Block Vehicle Flooding", "Prevents modders from creating too many vehicles", true);
 
 	BoolCommand _BlockGhostPeds("blockghostpeds", "Block Ghost Peds", "Blocks creation of ghost peds that are seemingly created due to a game bug", true);
+	BoolCommand _LogTaskTrees("logtasktrees", "Log Task Trees", "Log task tree combinations (learning; unique non-whitelisted 4-tuples only)");
 }
 
 namespace
@@ -569,6 +570,14 @@ namespace
 					// whitelist enforcement: block + quarantine like other attacks
 					if (!YimMenu::CrashSignatures::IsValidTaskTriple(i, t.m_TaskType, t.m_TaskTreeType))
 					{
+						// learning mode: log unique non-whitelisted 4-tuples once (pure logging; no behavior change)
+						if (YimMenu::Features::_LogTaskTrees.GetState() && ::YimMenu::Players::ShouldLogFor(::YimMenu::Protections::GetSyncingPlayer()))
+						{
+							if (YimMenu::CrashSignatures::RememberNonWhitelistedTaskQuad(i, j, t.m_TaskType, t.m_TaskTreeType))
+							{
+								LOGF(SYNC, INFO, "LEARNING: Valid task data - treeIndex={}, taskIndex={}, taskType={}, taskTreeType={} from {}", i, j, t.m_TaskType, t.m_TaskTreeType, Protections::GetSyncingPlayer().GetName());
+							}
+						}
 						LOGF(SYNC, WARNING, "Blocking non-whitelisted task triple (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
 						SyncBlocked("task whitelist");
 						// proactively quarantine to prevent immediate retries chaining into a crash
@@ -677,45 +686,6 @@ namespace
 			}
 			break;
 		}
-		// narrowed guard to reduce false positives while still blocking malicious patterns
-		// case "CProjectileAttachNode"_J:
-		// {
-		// 	// allow normal arrows/dynamite/hatchets to attach; only block suspicious cases
-		// 	if (object && object->m_ObjectType == (uint16_t)NetObjType::WorldProjectile)
-		// 	{
-		// 		auto sp = Protections::GetSyncingPlayer();
-		// 		if (sp)
-		// 		{
-		// 			auto& pd = sp.GetData();
-		// 			const auto now = std::chrono::steady_clock::now();
-		// 			const bool recent_null_flood = pd.m_LastNullObjectFloodAt.time_since_epoch().count() != 0 && (now - pd.m_LastNullObjectFloodAt) < std::chrono::seconds(30);
-		// 			// 1) drop during quarantine or shortly after null-object floods
-		// 			if (pd.IsSyncsBlocked() || recent_null_flood)
-		// 			{
-		// 				SyncBlocked("projectile attach during quarantine/null-flood");
-		// 				DeleteSyncObject(object->m_ObjectId);
-		// 				return true;
-		// 			}
-		// 			// 2) rate-limit per player to suppress invisible-shooter spam patterns
-		// 			if (pd.m_ProjectileAttachRateLimit.Process() && pd.m_ProjectileAttachRateLimit.ExceededLastProcess())
-		// 			{
-		// 				SyncBlocked("projectile attach spam");
-		// 				pd.QuarantineFor(std::chrono::seconds(10));
-		// 				DeleteSyncObject(object->m_ObjectId);
-		// 				return true;
-		// 			}
-		// 			// 3) ownership consistency: if the attaching projectile wasn't created by this syncer, block
-		// 			if (auto creator = GetObjectCreator(object); creator && creator != sp)
-		// 			{
-		// 				SyncBlocked("projectile attach owner mismatch");
-		// 				DeleteSyncObject(object->m_ObjectId);
-		// 				return true;
-		// 			}
-		// 		}
-		// 		// otherwise allow (normal combat projectiles)
-		// 	}
-		// 	break;
-		// }
 		case "CPropSetCreationNode"_J:
 		{
 			auto& data = node->GetData<CPropSetCreationData>();

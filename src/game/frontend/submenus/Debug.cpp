@@ -43,6 +43,9 @@ namespace YimMenu::Submenus
 		debug->AddItem(std::make_shared<BoolCommandItem>("logservermessages"_J));
 		//debug->AddItem(std::make_shared<BoolCommandItem>("logscriptlaunches"_J));
 
+			debug->AddItem(std::make_shared<BoolCommandItem>("logtasktrees"_J));
+
+
 		debug->AddItem(std::make_shared<BoolCommandItem>("betterentitycheck"_J));
 		debug->AddItem(std::make_shared<CommandItem>("chathelper"_J));
 		debug->AddItem(std::make_shared<CommandItem>("clearchat"_J));
