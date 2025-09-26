@@ -445,8 +445,8 @@ namespace
 					}
 				}
 
-				// always block attachments that target us, regardless of the feature toggle
-				if (targetingUs)
+				// block physical attachments that target us only when the toggle is enabled
+				if (targetingUs && Features::_BlockAttachments.GetState())
 				{
 					SyncBlocked("attachment", GetObjectCreator(object));
 					if (sp)
@@ -459,7 +459,25 @@ namespace
 					}
 					else if (local && local->m_NetObject)
 					{
-						Network::ForceRemoveNetworkEntity(local->m_NetObject->m_ObjectId, -1, false, Protections::GetSyncingPlayer());
+						// temporarily ghost us for this attacker
+						const auto localId = local->m_NetObject->m_ObjectId;
+						auto forPlayer = Protections::GetSyncingPlayer();
+						// begin ghost period for this attacker
+						forPlayer.GetData().m_GhostMode = true;
+						// send detach
+						FiberPool::Push([localId, forPlayer] {
+							try {
+								Network::ForceRemoveNetworkEntity(localId, -1, false, forPlayer);
+							} catch (...) {
+								LOG(WARNING) << "ForceRemoveNetworkEntity (fiber) failed; continuing";
+							}
+						});
+						// end ghost
+						std::thread([forPlayer]() mutable {
+							std::this_thread::sleep_for(std::chrono::seconds(11));
+							if (forPlayer.IsValid())
+								forPlayer.GetData().m_GhostMode = false;
+						}).detach();
 					}
 					// additionally, if the attach target id is valid, try removing it to guarantee detachment (e.g., draft veh/wagon)
 					if (data.m_IsAttached && data.m_AttachObjectId != 0 && data.m_AttachObjectId != (int)0xFFFF)
@@ -567,42 +585,46 @@ namespace
 				{
 					const auto& t = data.m_Trees[i].m_Tasks[j];
 
-					// whitelist enforcement: block + quarantine like other attacks
+					// whitelist enforcement: block + quarantine like other attacks (unless learning mode is enabled)
 					if (!YimMenu::CrashSignatures::IsValidTaskTriple(i, t.m_TaskType, t.m_TaskTreeType))
 					{
-						// learning mode: log unique non-whitelisted 4-tuples once (pure logging; no behavior change)
+						// learning mode: log unique non-whitelisted 4-tuples once
 						if (YimMenu::Features::_LogTaskTrees.GetState() && ::YimMenu::Players::ShouldLogFor(::YimMenu::Protections::GetSyncingPlayer()))
 						{
 							if (YimMenu::CrashSignatures::RememberNonWhitelistedTaskQuad(i, j, t.m_TaskType, t.m_TaskTreeType))
 							{
-								LOGF(SYNC, INFO, "LEARNING: Valid task data - treeIndex={}, taskIndex={}, taskType={}, taskTreeType={} from {}", i, j, t.m_TaskType, t.m_TaskTreeType, Protections::GetSyncingPlayer().GetName());
+								LOGF(SYNC, INFO, "LEARNING: TaskTree data - treeIndex={}, taskIndex={}, taskType={}, taskTreeType={} from {}", i, j, t.m_TaskType, t.m_TaskTreeType, Protections::GetSyncingPlayer().GetName());
 							}
 						}
-						LOGF(SYNC, WARNING, "Blocking non-whitelisted task triple (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
-						SyncBlocked("task whitelist");
-						// proactively quarantine to prevent immediate retries chaining into a crash
-						if (auto qp = Protections::GetSyncingPlayer())
-							qp.GetData().QuarantineFor(std::chrono::seconds(12));
-						//if (object) DeleteSyncObjectLater(object->m_ObjectId);
-						return true;
+						// when learning is on, do NOT block/quarantine here — allow subsequent sanity checks to run
+						if (!YimMenu::Features::_LogTaskTrees.GetState())
+						{
+							LOGF(SYNC, WARNING, "Blocking non-whitelisted task triple (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
+							SyncBlocked("task whitelist");
+							// proactively quarantine to prevent immediate retries chaining into a crash
+							if (auto qp = Protections::GetSyncingPlayer())
+								qp.GetData().QuarantineFor(std::chrono::seconds(12));
+							//if (object) DeleteSyncObjectLater(object->m_ObjectId);
+							return true;
+						}
 					}
 
-					if (t.m_TaskType == -1)
-					{
-						LOGF(SYNC, WARNING, "Blocking null task type (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
-						SyncBlocked("task fuzzer crash");
-						//if (object) DeleteSyncObjectLater(object->m_ObjectId);
-						return true;
-					}
+					// if (t.m_TaskType == -1)
+					// {
+					// 	LOGF(SYNC, WARNING, "Blocking null task type (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
+					// 	SyncBlocked("task fuzzer crash");
+					// 	//if (object) DeleteSyncObjectLater(object->m_ObjectId);
+					// 	return true;
+					// }
 
-					// TODO: better heuristics
-					if (t.m_TaskTreeType == 31)
-					{
-						LOGF(SYNC, WARNING, "Blocking invalid task tree type (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
-						SyncBlocked("task fuzzer crash");
-						//if (object) DeleteSyncObjectLater(object->m_ObjectId);
-						return true;
-					}
+					// // TODO: better heuristics
+					// if (t.m_TaskTreeType == 31)
+					// {
+					// 	LOGF(SYNC, WARNING, "Blocking invalid task tree type (tree={}, task={}) from {}", i, j, Protections::GetSyncingPlayer().GetName());
+					// 	SyncBlocked("task fuzzer crash");
+					// 	//if (object) DeleteSyncObjectLater(object->m_ObjectId);
+					// 	return true;
+					// }
 				}
 			}
 			break;
@@ -642,6 +664,7 @@ namespace
 					}
 				}
 
+				// block ped attachments that target us only when the toggle is enabled
 				if (targetingUs && Features::_BlockAttachments.GetState())
 				{
 					SyncBlocked("ped attachment");
@@ -664,15 +687,38 @@ namespace
 						}
 
 						DeleteSyncObject(object->m_ObjectId);
-						return true;
 					}
-					else
+					else if (local && local->m_NetObject)
 					{
-						LOGF(SYNC, WARNING, "Player {} has attached themselves to us/our asset. Pretending to delete our ped to force detach on their end", Protections::GetSyncingPlayer().GetName());
-						// delete us on their end
-						Network::ForceRemoveNetworkEntity(local->m_NetObject->m_ObjectId, -1, false, Protections::GetSyncingPlayer());
-						data.m_IsAttached = false;
+						LOGF(SYNC, WARNING, "Player {} has attached themselves to us/our asset. Forcing detach on their end via fiber", Protections::GetSyncingPlayer().GetName());
+						// temporarily ghost us for this attacker
+						const auto localId = local->m_NetObject->m_ObjectId;
+						auto forPlayer = Protections::GetSyncingPlayer();
+						// begin ghost period for this attacker
+						forPlayer.GetData().m_GhostMode = true;
+						// send detach
+						FiberPool::Push([localId, forPlayer] {
+							try {
+								Network::ForceRemoveNetworkEntity(localId, -1, false, forPlayer);
+							} catch (...) {
+								LOG(WARNING) << "ForceRemoveNetworkEntity (fiber) failed; continuing";
+							}
+						});
+						// end ghost
+						std::thread([forPlayer]() mutable {
+							std::this_thread::sleep_for(std::chrono::seconds(11));
+							if (forPlayer.IsValid())
+								forPlayer.GetData().m_GhostMode = false;
+						}).detach();
 					}
+
+					// additionally, if the attach target id is valid, try removing it to guarantee detachment (e.g., draft veh/wagon)
+					if (data.m_IsAttached && data.m_AttachObjectId != 0 && data.m_AttachObjectId != (int)0xFFFF)
+					{
+						DeleteSyncObject(data.m_AttachObjectId);
+					}
+					data.m_IsAttached = false;
+					return true;
 				}
 
 				// trailer-specific crash: block trailer attachments targeting our assets
