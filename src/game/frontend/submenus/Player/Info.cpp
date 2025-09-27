@@ -40,10 +40,20 @@ namespace YimMenu::Submenus
 				{
 					if (Players::GetSelected().GetData().m_GhostMode)
 					{
+						// on enabling ghost mode manually, send a stronger detach burst (ped/mount/vehicle) to the selected player
 						FiberPool::Push([] {
-							if (Players::GetSelected().IsValid())
-							{
-								Network::ForceRemoveNetworkEntity(Self::GetPed().GetNetworkObject(), false, Players::GetSelected());
+							if (!Players::GetSelected().IsValid()) return;
+							auto dst = Players::GetSelected();
+							int pedId = -1, mountId = -1, vehicleId = -1;
+							if (Self::GetPed() && Self::GetPed().IsValid()) pedId = Self::GetPed().GetNetworkObjectId();
+							if (Self::GetMount() && Self::GetMount().IsValid()) mountId = Self::GetMount().GetNetworkObjectId();
+							if (Self::GetVehicle() && Self::GetVehicle().IsValid()) vehicleId = Self::GetVehicle().GetNetworkObjectId();
+							try {
+								if (pedId != -1)     Network::ForceRemoveNetworkEntity(pedId, -1, false, dst);
+								if (mountId != -1)    Network::ForceRemoveNetworkEntity(mountId, -1, false, dst);
+								if (vehicleId != -1)  Network::ForceRemoveNetworkEntity(vehicleId, -1, false, dst);
+							} catch (...) {
+								LOG(WARNING) << "GhostMode detach burst failed; continuing";
 							}
 						});
 					}

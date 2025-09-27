@@ -53,6 +53,29 @@ namespace YimMenu::Hooks
 			return 0;
 		}
 
+		// protect against ghosting others: block removal of any player ped clone still in session
+		for (auto& [idx, plyEntry] : Players::GetPlayers())
+		{
+			Player ply = plyEntry; // non-const copy to allow getters
+			if (!ply.IsValid()) continue;
+			// skip self (already handled above)
+			if (ply == Self::GetPlayer()) continue;
+			auto ped = ply.GetPed();
+			if (ped && ped.GetNetworkObjectId() == objectId)
+			{
+				// someone is trying to remove this player's ped for us — block and resync so they stay visible
+				FiberPool::Push([ply] mutable {
+					if (ply.IsValid() && ply.GetPed())
+						ply.GetPed().ForceSync();
+				});
+				const char* src = sender ? sender->GetName() : "unknown";
+				Notifications::Show("Protections", std::format("Blocked player ped removal (ghost) on {} from {}", ply.GetName(), src), NotificationType::Warning);
+				if (sender)
+					Player(sender).GetData().QuarantineFor(std::chrono::seconds(5));
+				return 0;
+			}
+		}
+
 		return BaseHook::Get<Protections::HandleCloneRemove, DetourHook<decltype(&Protections::HandleCloneRemove)>>()->Original()(mgr, sender, target, objectId, ownershipToken, unk);
 	}
 }

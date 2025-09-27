@@ -173,17 +173,15 @@ namespace YimMenu::Hooks
 					}
 				}
 			}
-			// ghost-with-player spam protection: quarantine abusive senders
+			// ghost-with-player protection: block the event outright (prevents remote ghost toggles from affecting us)
 			if (type == NetEventType::NETWORK_SET_ENTITY_GHOST_WITH_PLAYER_EVENT && sourcePlayer)
 			{
 				auto p = Player(sourcePlayer);
-				if (p.GetData().m_GhostEventRateLimit.Process() && p.GetData().m_GhostEventRateLimit.ExceededLastProcess())
-				{
-					LOGF(NET_EVENT, WARNING, "Blocked ghost-with-player spam from {}", sourcePlayer->GetName());
-					p.GetData().QuarantineFor(std::chrono::seconds(10));
-					Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
-					return;
-				}
+				LOGF(NET_EVENT, WARNING, "Blocked ghost-with-player event from {}", sourcePlayer->GetName());
+				// light quarantine to dampen retries without being too aggressive
+				p.GetData().QuarantineFor(std::chrono::seconds(5));
+				Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
+				return;
 			}
 
 

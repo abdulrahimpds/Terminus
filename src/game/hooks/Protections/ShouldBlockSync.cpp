@@ -465,22 +465,24 @@ namespace
 					}
 					else if (local && local->m_NetObject)
 					{
-						// temporarily ghost us for this attacker
+						// temporarily ghost us for this attacker (10s) and send detach burst (ped/mount/vehicle)
 						const auto localId = local->m_NetObject->m_ObjectId;
 						auto forPlayer = Protections::GetSyncingPlayer();
 						// begin ghost period for this attacker
 						forPlayer.GetData().m_GhostMode = true;
-						// send detach
-						FiberPool::Push([localId, forPlayer] {
+						// send detach for ped + mount + vehicle (token sweep via -1)
+						FiberPool::Push([localId, mountId, vehicleId, forPlayer] {
 							try {
 								Network::ForceRemoveNetworkEntity(localId, -1, false, forPlayer);
+								if (mountId != -1) Network::ForceRemoveNetworkEntity(mountId, -1, false, forPlayer);
+								if (vehicleId != -1) Network::ForceRemoveNetworkEntity(vehicleId, -1, false, forPlayer);
 							} catch (...) {
 								LOG(WARNING) << "ForceRemoveNetworkEntity (fiber) failed; continuing";
 							}
 						});
-						// end ghost
+						// end ghost after 10 seconds
 						std::thread([forPlayer]() mutable {
-							std::this_thread::sleep_for(std::chrono::seconds(11));
+							std::this_thread::sleep_for(std::chrono::seconds(10));
 							if (forPlayer.IsValid())
 								forPlayer.GetData().m_GhostMode = false;
 						}).detach();
@@ -701,22 +703,24 @@ namespace
 					else if (local && local->m_NetObject)
 					{
 						LOGF(SYNC, WARNING, "Player {} has attached themselves to us/our asset. Forcing detach on their end via fiber", Protections::GetSyncingPlayer().GetName());
-						// temporarily ghost us for this attacker
+						// temporarily ghost us for this attacker (10s) and send detach burst (ped/mount/vehicle)
 						const auto localId = local->m_NetObject->m_ObjectId;
 						auto forPlayer = Protections::GetSyncingPlayer();
 						// begin ghost period for this attacker
 						forPlayer.GetData().m_GhostMode = true;
-						// send detach
-						FiberPool::Push([localId, forPlayer] {
+						// send detach for ped + mount + vehicle (token sweep via -1)
+						FiberPool::Push([localId, mountId, vehicleId, forPlayer] {
 							try {
 								Network::ForceRemoveNetworkEntity(localId, -1, false, forPlayer);
+								if (mountId != -1) Network::ForceRemoveNetworkEntity(mountId, -1, false, forPlayer);
+								if (vehicleId != -1) Network::ForceRemoveNetworkEntity(vehicleId, -1, false, forPlayer);
 							} catch (...) {
 								LOG(WARNING) << "ForceRemoveNetworkEntity (fiber) failed; continuing";
 							}
 						});
-						// end ghost
+						// end ghost after 10 seconds
 						std::thread([forPlayer]() mutable {
-							std::this_thread::sleep_for(std::chrono::seconds(11));
+							std::this_thread::sleep_for(std::chrono::seconds(10));
 							if (forPlayer.IsValid())
 								forPlayer.GetData().m_GhostMode = false;
 						}).detach();
