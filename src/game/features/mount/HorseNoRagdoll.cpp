@@ -11,15 +11,17 @@ namespace YimMenu::Features
 
 		virtual void OnTick() override
 		{
-			if (Self::GetMount())
-				Self::GetMount().SetRagdoll(false);
+			auto mount = Self::GetMount();
+			if (mount && mount.HasControl())
+				mount.SetRagdoll(false);
 		}
 
-        virtual void OnDisable() override
-        {
-			if (Self::GetMount())
-				Self::GetMount().SetRagdoll(true);
-        }
+		virtual void OnDisable() override
+		{
+			auto mount = Self::GetMount();
+			if (mount && mount.HasControl())
+				mount.SetRagdoll(true);
+		}
 	};
 
 	static HorseNoRagdoll _HorseNoRagdoll{"horsenoragdoll", "No Ragdoll", "Your horse will never ragdoll"};

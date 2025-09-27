@@ -13,6 +13,7 @@
 
 #include <player/CPlayerInfo.hpp>
 
+#include "game/rdr/Player.hpp"
 
 namespace YimMenu::Features
 {
@@ -26,16 +27,39 @@ namespace YimMenu::Hooks
 
 		if (g_Running)
 		{
-			Players::OnPlayerJoin(player);
-			uint64_t rid      = player->m_PlayerInfo->m_GamerInfo.m_GamerHandle2.m_RockstarId;
-			netAddress ipaddr = player->m_PlayerInfo->m_GamerInfo.m_ExternalAddress;
-			std::string ip_str = std::format("{}.{}.{}.{}", ipaddr.m_field1, ipaddr.m_field2, ipaddr.m_field3, ipaddr.m_field4);
+			const auto localPid = PLAYER::PLAYER_ID();
+			const bool isSelf = (player->m_PlayerIndex == localPid);
+				// apply a 15s join-grace quarantine so the newcomer cannot immediately spam dangerous traffic
+				if (!isSelf)
+				{
+					auto jp = Player(player);
+					if (jp.IsValid())
+					{
+						jp.GetData().StartJoinGrace(std::chrono::seconds(15));
+						LOG(INFO) << std::format("applied 15s join-grace quarantine to {}", jp.GetName());
+					}
+				}
 
-			LOG(INFO) << std::format("{} joined the session. Reserved slot #{}. RID: {} | IP: {}",
-			    player->GetName(),
-			    (int)player->m_PlayerIndex,
-			    (int)rid,
-			    ip_str);
+
+				// show a top-left notification for player join (skip self)
+				if (!isSelf)
+				{
+					Notifications::Show("Network", std::format("{} joined the session", player->GetName()), NotificationType::Info);
+				}
+
+			Players::OnPlayerJoin(player);
+			if (!isSelf)
+			{
+				uint64_t rid      = player->m_PlayerInfo->m_GamerInfo.m_GamerHandle2.m_RockstarId;
+				netAddress ipaddr = player->m_PlayerInfo->m_GamerInfo.m_ExternalAddress;
+				std::string ip_str = std::format("{}.{}.{}.{}", ipaddr.m_field1, ipaddr.m_field2, ipaddr.m_field3, ipaddr.m_field4);
+
+				LOG(INFO) << std::format("{} joined the session. Reserved slot #{}. RID: {} | IP: {}",
+				    player->GetName(),
+				    (int)player->m_PlayerIndex,
+				    (int)rid,
+				    ip_str);
+			}
 		}
 	}
 

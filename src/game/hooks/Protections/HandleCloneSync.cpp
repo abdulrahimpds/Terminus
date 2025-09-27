@@ -16,6 +16,9 @@
 #include <network/CNetGamePlayer.hpp>
 #include <rage/datBitBuffer.hpp>
 
+#include "core/commands/BoolCommand.hpp"
+namespace YimMenu::Features { extern BoolCommand _BlockKickFromMount; }
+
 namespace YimMenu::Hooks
 {
 	// exception handling for complex attacks
@@ -94,11 +97,11 @@ namespace YimMenu::Hooks
 			return 0;
 		}
 
-// quarantine gate: drop all clone sync while sender is quarantined
+// quarantine gate: drop all clone sync while sender is quarantined or during join-grace
 		if (src)
 		{
 			auto sp = Player(src);
-			if (sp.GetData().IsSyncsBlocked())
+			if (sp.GetData().IsSyncsBlocked() || sp.GetData().IsInJoinGrace())
 			{
 				return 0;
 			}
@@ -221,7 +224,7 @@ namespace YimMenu::Hooks
 			return 0;
 		}
 
-		if (Self::GetMount() && Self::GetMount().GetNetworkObjectId() == objectId && Self::GetMount().HasControl())
+		if (Features::_BlockKickFromMount.GetState() && Self::GetMount() && Self::GetMount().GetNetworkObjectId() == objectId && Self::GetMount().HasControl())
 		{
 			Notifications::Show("Protections", std::format("Blocked kick from mount from {}", src->GetName()), NotificationType::Warning);
 			return 0;

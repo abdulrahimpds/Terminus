@@ -127,11 +127,11 @@ namespace YimMenu::Hooks
 	{
 		rage::datBitBuffer new_buffer = *buffer;
 
-		// quarantine gate: drop all net events from quarantined senders
+		// quarantine gate: drop all net events from quarantined senders (full) or during join-grace
 		if (sourcePlayer)
 		{
 			auto p = Player(sourcePlayer);
-			if (p.GetData().IsSyncsBlocked())
+			if (p.GetData().IsSyncsBlocked() || p.GetData().IsInJoinGrace())
 			{
 				Pointers.SendEventAck(eventMgr, nullptr, sourcePlayer, targetPlayer, index, handledBits);
 				return;

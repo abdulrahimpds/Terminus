@@ -12,11 +12,11 @@ namespace YimMenu::Hooks
 {
 	int Protections::HandleCloneCreate(void* mgr, CNetGamePlayer* sender, uint16_t objectType, uint16_t objectId, int flags, void* guid, rage::datBitBuffer* buffer, int a8, int a9, bool isQueued)
 	{
-		// quarantine gate: drop clone create while sender is quarantined
+		// quarantine gate: drop clone create while sender is quarantined or during join-grace
 		if (sender)
 		{
 			auto sp = Player(sender);
-			if (sp.GetData().IsSyncsBlocked())
+			if (sp.GetData().IsSyncsBlocked() || sp.GetData().IsInJoinGrace())
 			{
 				return 0;
 			}

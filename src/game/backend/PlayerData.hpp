@@ -40,6 +40,25 @@ namespace YimMenu
 			m_BlockSyncsUntil = std::chrono::steady_clock::now() + duration;
 		}
 
+			// join grace quarantine: temporarily block this player's traffic right after they join
+			bool m_JoinGraceApplied{};
+			std::optional<std::chrono::steady_clock::time_point> m_JoinGraceUntil{};
+
+			inline bool IsInJoinGrace() const
+			{
+				return m_JoinGraceUntil.has_value() && std::chrono::steady_clock::now() < *m_JoinGraceUntil;
+			}
+
+			inline void StartJoinGrace(std::chrono::seconds duration)
+			{
+				if (!m_JoinGraceApplied)
+				{
+					m_JoinGraceApplied = true;
+					m_JoinGraceUntil = std::chrono::steady_clock::now() + duration;
+				}
+			}
+
+
 		// suspicion tracking for task-tree anomalies
 		int m_TaskTreeSuspicions{};
 		std::chrono::steady_clock::time_point m_LastTaskTreeSuspicion{};

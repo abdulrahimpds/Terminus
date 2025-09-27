@@ -11,6 +11,9 @@
 #include <network/netObject.hpp>
 #include <network/CNetGamePlayer.hpp>
 
+#include "core/commands/BoolCommand.hpp"
+namespace YimMenu::Features { extern BoolCommand _BlockKickFromMount; }
+
 namespace
 {
 	static int GetNextTokenValue(int prev_token)
@@ -46,31 +49,45 @@ namespace YimMenu::Hooks
 			return 1;
 		}
 
-		if (Self::GetMount() && Self::GetMount().IsNetworked() && objectId == Self::GetMount().GetNetworkObjectId())
+		if (Features::_BlockKickFromMount.GetState() && Self::GetMount() && Self::GetMount().IsNetworked() && objectId == Self::GetMount().GetNetworkObjectId() && Self::GetMount().HasControl())
 		{
+			// only treat as malicious if we actually own/control the mount; otherwise allow legitimate owner sync
 			Self::GetMount().GetNetworkObject()->m_OwnershipToken = GetNextTokenValue(GetNextTokenValue(Self::GetMount().GetNetworkObject()->m_OwnershipToken));
 			FiberPool::Push([] {
 				if (Self::GetMount())
 					Self::GetMount().ForceSync();
 			});
 
-			Notifications::Show("Protections", std::format("Blocked kick from mount from {}", sender->GetName()), NotificationType::Warning);
 			if (sender)
+			{
+				Notifications::Show("Protections", std::format("Blocked kick from mount from {}", sender->GetName()), NotificationType::Warning);
 				Player(sender).GetData().QuarantineFor(std::chrono::seconds(10));
+			}
+			else
+			{
+				Notifications::Show("Protections", "Blocked kick from mount from unknown", NotificationType::Warning);
+			}
 			return 1;
 		}
 
-		if (Self::GetVehicle() && Self::GetVehicle().IsNetworked() && objectId == Self::GetVehicle().GetNetworkObjectId())
+		if (Self::GetVehicle() && Self::GetVehicle().IsNetworked() && objectId == Self::GetVehicle().GetNetworkObjectId() && Self::GetVehicle().HasControl())
 		{
+			// only treat as malicious if we own/control the vehicle; otherwise allow legitimate owner sync
 			Self::GetVehicle().GetNetworkObject()->m_OwnershipToken = GetNextTokenValue(GetNextTokenValue(Self::GetVehicle().GetNetworkObject()->m_OwnershipToken));
 			FiberPool::Push([] {
 				if (Self::GetVehicle())
 					Self::GetVehicle().ForceSync();
 			});
 
-			Notifications::Show("Protections", std::format("Blocked kick from vehicle from {}", sender->GetName()), NotificationType::Warning);
 			if (sender)
+			{
+				Notifications::Show("Protections", std::format("Blocked kick from vehicle from {}", sender->GetName()), NotificationType::Warning);
 				Player(sender).GetData().QuarantineFor(std::chrono::seconds(10));
+			}
+			else
+			{
+				Notifications::Show("Protections", "Blocked kick from vehicle from unknown", NotificationType::Warning);
+			}
 			return 1;
 		}
 

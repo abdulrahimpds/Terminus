@@ -197,6 +197,29 @@ namespace YimMenu::Hooks
 				}
 			}
 
+
+				// apply join-grace quarantine when we see a player added to our session (covers the case when WE join them)
+				{
+					const uint64_t rid_addr = event->m_PeerAddress.m_GamerHandle.m_RockstarId;
+					FiberPool::Push([rid_addr] {
+						// retry briefly to wait until Players map is populated
+						for (int i = 0; i < 120; ++i) // ~6s at 50ms
+						{
+							auto p = Players::GetByRID(rid_addr);
+							if (p.IsValid() && p != Self::GetPlayer())
+							{
+								if (!p.GetData().m_JoinGraceApplied)
+								{
+									p.GetData().StartJoinGrace(std::chrono::seconds(15));
+									LOGF(VERBOSE, "applied join-grace to {} via ADD_PLAYER", p.GetName());
+								}
+								return; // done
+							}
+							ScriptMgr::Yield(50ms);
+						}
+					});
+				}
+
 			// detect when WE join a new session (not just another player joining our session)
 			// additional check: only trigger if we actually need the fix
 			if (!g_InSession && g_NeedsAutoFix)

@@ -59,6 +59,8 @@ namespace YimMenu::Features
 	BoolCommand _BlockSpectateSession("blockspectatesession", "Block Spectate for Session", "Attempts to prevent modders from spectating anyone", false);
 	BoolCommand _BlockAttachments("blockattach", "Block Attachments", "Prevents modders from attaching objects and peds to you", true);
 	BoolCommand _BlockVehicleFlooding("blockvehflood", "Block Vehicle Flooding", "Prevents modders from creating too many vehicles", true);
+		BoolCommand _BlockKickFromMount("blockkickmount", "Block Kick from Mount", "Blocks remote sync over your mount during seat/ownership transfers; may cause instability. Disable if you experience mount desync.");
+
 
 	BoolCommand _BlockGhostPeds("blockghostpeds", "Block Ghost Peds", "Blocks creation of ghost peds that are seemingly created due to a game bug", true);
 	BoolCommand _LogTaskTrees("logtasktrees", "Log Task Trees", "Log task tree combinations (learning; unique non-whitelisted 4-tuples only)");
@@ -448,6 +450,10 @@ namespace
 				// block physical attachments that target us only when the toggle is enabled
 				if (targetingUs && Features::_BlockAttachments.GetState())
 				{
+					// allow legitimate seat/mount attachments targeting our horse/vehicle
+					if (data.m_IsAttached && (data.m_AttachObjectId == mountId || data.m_AttachObjectId == vehicleId)
+						&& object && (((NetObjType)object->m_ObjectType == NetObjType::Player) || ((NetObjType)object->m_ObjectType == NetObjType::Ped)))
+						return false;
 					SyncBlocked("attachment", GetObjectCreator(object));
 					if (sp)
 						sp.AddDetection(Detection::TRIED_ATTACH);
@@ -667,6 +673,10 @@ namespace
 				// block ped attachments that target us only when the toggle is enabled
 				if (targetingUs && Features::_BlockAttachments.GetState())
 				{
+					// allow legitimate seat/mount attachments targeting our horse/vehicle
+					if (data.m_IsAttached && (data.m_AttachObjectId == mountId || data.m_AttachObjectId == vehicleId)
+						&& object && (((NetObjType)object->m_ObjectType == NetObjType::Player) || ((NetObjType)object->m_ObjectType == NetObjType::Ped)))
+						return false;
 					SyncBlocked("ped attachment");
 					if (sp)
 						sp.AddDetection(Detection::TRIED_ATTACH);
@@ -1118,10 +1128,10 @@ namespace YimMenu::Hooks::Protections
 	{
 		try
 		{
-			// early quarantine gate
+			// early quarantine gate (full quarantine) and join-grace gate
 			{
 				auto qp = ::YimMenu::Protections::GetSyncingPlayer();
-				if (qp && qp.GetData().IsSyncsBlocked())
+				if (qp && (qp.GetData().IsSyncsBlocked() || qp.GetData().IsInJoinGrace()))
 				{
 					return true;
 				}

@@ -92,6 +92,8 @@ namespace YimMenu::Submenus
 		syncGroup->AddItem(std::make_shared<BoolCommandItem>("blockspectatesession"_J));
 		syncGroup->AddItem(std::make_shared<BoolCommandItem>("blockattach"_J));
 		syncGroup->AddItem(std::make_shared<BoolCommandItem>("blockvehflood"_J));
+			syncGroup->AddItem(std::make_shared<BoolCommandItem>("blockkickmount"_J));
+
 
 		networkEventGroup->AddItem(std::make_shared<BoolCommandItem>("blockexplosions"_J));
 		networkEventGroup->AddItem(std::make_shared<BoolCommandItem>("blockptfx"_J));
