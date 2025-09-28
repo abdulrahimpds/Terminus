@@ -96,57 +96,15 @@ namespace YimMenu::Hooks
 	void Protections::LogSyncNode(CProjectBaseSyncDataNode* node, SyncNodeId& id, NetObjType type, rage::netObject* object, Player& player)
 	{
 
-		// targeted crash protection based on .map analysis - prevent null pointer dereference
-		if (!node)
-		{
-			LOG(WARNING) << "LogSyncNode: Blocked null node pointer";
-			return;
-		}
+		// logging-only header: compute object id safely and print source
+		int object_id = -1;
+		if (object)
+			object_id = object->m_ObjectId;
 
-		if (!object)
-		{
-			// note: null object can be legitimate during creation queue; just log and attribute to player if known
-			if (player)
-			{
-				LOGF(SYNC, WARNING, "LogSyncNode: Blocked null object pointer (from {})", player.GetName());
-				// detect flood of null-object nodes from a single player and quarantine with escalation
-				if (player.GetData().m_NullObjectLogRateLimit.Process() && player.GetData().m_NullObjectLogRateLimit.ExceededLastProcess())
-				{
-					auto& pd = player.GetData();
-					pd.m_LastNullObjectFloodAt = std::chrono::steady_clock::now();
-					pd.m_NullObjectFloodStrikes++;
-					const bool escalate = pd.m_NullObjectFloodStrikes >= 2; // second strike -> longer block
-					const auto dur = escalate ? std::chrono::seconds(60) : std::chrono::seconds(10);
-					pd.QuarantineFor(dur);
-					LOGF(SYNC, WARNING, "Quarantined {} for null-object node flood ({} strike, {}s)", player.GetName(), pd.m_NullObjectFloodStrikes, (int)dur.count());
-				}
-			}
-			else
-			{
-				LOG(WARNING) << "LogSyncNode: Blocked null object pointer (from unknown)";
-			}
-			return;
-		}
-			// validate object memory readability to avoid AV on crafted pointers
-			if (!IsReadable(object, sizeof(*object)) || !IsReadable(&object->m_ObjectId, sizeof(object->m_ObjectId)))
-			{
-				LOG(WARNING) << "LogSyncNode: Unreadable object memory; skipping";
-				return;
-			}
-
-
-		// validate player before accessing
-		if (!player.IsValid())
-		{
-			LOG(INFO) << "UNKNOWN: " << id.name << " " << object->m_ObjectId;
-			// continue processing but don't access player data
-		}
+		if (player.IsValid())
+			LOG(INFO) << player.GetName() << ": " << id.name << ", " << object_id;
 		else
-		{
-			LOG(INFO) << player.GetName() << ": " << id.name << ", " << object->m_ObjectId;
-		}
-
-		int object_id = object->m_ObjectId;
+			LOG(INFO) << "UNKNOWN: " << id.name << " " << object_id;
 
 		switch (id)
 		{

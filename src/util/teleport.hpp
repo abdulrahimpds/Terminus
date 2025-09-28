@@ -171,6 +171,11 @@ namespace YimMenu::Teleport
 		ent.SetCollision(false);
 		ent.SetFrozen(true);
 
+
+			// ensure we own the vehicle early so VPM data writes are reliable
+			ent.ForceControl();
+			ScriptMgr::Yield(15ms);
+
 		auto vehId = ptr->m_NetObject->m_ObjectId;
 
 		auto playerPedPtr = playerPed.GetPointer<CDynamicEntity*>();
@@ -188,17 +193,24 @@ namespace YimMenu::Teleport
 
 		TASK::CLEAR_PED_TASKS_IMMEDIATELY(handle, true, true);
 
-		for (int i = 0; i < 40; i++)
+		for (int i = 0; i < 150; i++)
 		{
 			ScriptMgr::Yield(25ms);
 
 			if (!player.IsValid() || !ent.IsValid())
 				break;
 
+			// keep provoking VPM writes so our spoofed passenger/position is broadcast
 			Pointers.TriggerGiveControlEvent(player.GetHandle(), ptr->m_NetObject, 3);
 
 			auto newCoords = ent.GetPosition();
-			if (BUILTIN::VDIST(coords.x, coords.y, coords.z, newCoords.x, newCoords.y, newCoords.z) < 20 * 20 && VEHICLE::GET_PED_IN_VEHICLE_SEAT(ent.GetHandle(), 0) == handle)
+			auto pedPos = playerPed.GetPosition();
+
+			bool vehicleAtTarget = BUILTIN::VDIST(coords.x, coords.y, coords.z, newCoords.x, newCoords.y, newCoords.z) < 30.0f;
+			bool pedNearTarget = BUILTIN::VDIST(coords.x, coords.y, coords.z, pedPos.x, pedPos.y, pedPos.z) < 30.0f;
+			bool inSeat = VEHICLE::GET_PED_IN_VEHICLE_SEAT(ent.GetHandle(), -1) == handle || VEHICLE::GET_PED_IN_VEHICLE_SEAT(ent.GetHandle(), 0) == handle;
+
+			if ((vehicleAtTarget && inSeat) || pedNearTarget)
 			{
 				break;
 			}
